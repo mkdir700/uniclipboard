@@ -1,0 +1,202 @@
+use reqwest_dav::{list_cmd::ListEntity, Auth, ClientBuilder, Depth};
+use anyhow::Result;
+use std::result::Result::Ok;
+use uuid::Uuid;
+use crate::message::Payload;
+use crate::file_metadata::FileMetadata;
+
+
+pub struct WebDAVClient {
+    client: reqwest_dav::Client,
+}
+
+impl WebDAVClient {
+    pub async fn new(webdav_url: String, username: String, password: String) -> Result<Self> {
+        let client = ClientBuilder::new()
+            .set_host(webdav_url)
+            .set_auth(Auth::Basic(username, password))
+            .build()?;
+        Ok(Self { client })
+    }
+
+    /// Initializes the share directory on the WebDAV server.
+    ///
+    /// This method attempts to create a new directory at the specified base path
+    /// on the WebDAV server. This directory will be used for storing shared files.
+    ///
+    /// # Returns
+    ///
+    /// Returns a `Result` which is `Ok(())` if the directory is successfully created,
+    /// or an `Error` if the operation fails.
+    #[allow(dead_code)]
+    async fn initialize_share_directory(&self, dir: String) -> anyhow::Result<()> {
+        self.client.mkcol(&dir).await?;
+        Ok(())
+    }
+
+    /// Creates a new directory on the WebDAV server for sharing.
+    ///
+    /// This method attempts to create a new directory at the specified base path
+    /// on the WebDAV server. This directory will be used for storing shared files.
+    ///
+    /// # Returns
+    ///
+    /// Returns a `Result` which is `Ok(())` if the directory is successfully created,
+    /// or an `Error` if the operation fails.
+    ///
+    /// # Errors
+    ///
+    /// This function will return an error if:
+    /// - There's a failure in communicating with the WebDAV server
+    /// - The directory already exists
+    /// - The client doesn't have sufficient permissions to create the directory
+    #[allow(dead_code)]
+    pub async fn is_share_code_exists(&self) -> bool {
+        match self.client.list("/uniclipboard", Depth::Number(0)).await {
+            Ok(entries) => !entries.is_empty(),
+            Err(_) => false,
+        }
+    }
+
+    /// Uploads a Payload to the specified directory on the WebDAV server.
+    ///
+    /// # Arguments
+    ///
+    /// * `dir` - A String representing the directory path to upload the Payload to.
+    /// * `payload` - A Payload to be uploaded.
+    /// 
+    /// # Returns
+    /// 
+    /// Returns a Result containing the path of the uploaded file.
+    pub async fn upload(&self, dir: String, payload: Payload) -> Result<String> {
+        let uuid = Uuid::new_v4().to_string();
+        let filename = format!("{}_{}.json", payload.device_id, uuid);
+        let path: String;
+        if dir == "/" {
+            path = format!("/{}", filename);
+        } else {
+            path = format!("{}/{}", dir, filename);
+        }
+        self.client.put(&path, payload.to_json()).await?;
+        Ok(path)
+    }
+
+    /// Downloads a Payload from the specified path on the WebDAV server.
+    ///
+    /// # Arguments
+    ///
+    /// * `path` - A String representing the path to download the Payload from.
+    ///
+    /// # Returns   
+    ///
+    /// Returns a Result containing the Payload.
+    pub async fn download(&self, path: String) -> Result<Payload> {
+        let response = self.client.get(&path).await?;
+        if response.status().is_success() {
+            let content = response.bytes().await?;
+            let payload = serde_json::from_slice(&content)?;
+            Ok(payload)
+        } else {
+            Err(anyhow::anyhow!("Failed to download file"))
+        }
+    }
+
+    /// Counts the number of files in the specified directory on the WebDAV server.
+    ///
+    /// # Arguments
+    ///
+    /// * `path` - A String representing the directory path to count files in.
+    ///
+    /// # Returns
+    #[allow(dead_code)]
+    pub async fn count_files(&self, path: String) -> Result<usize> {
+        let entries = self.client.list(&path, Depth::Number(0)).await?;
+        Ok(entries.len())
+    }
+
+    /// Fetches the latest file from the specified directory on the WebDAV server.
+    ///
+    /// # Arguments
+    ///
+    /// * `dir` - A String representing the directory path to search for files.
+    ///
+    /// # Returns
+    ///
+    /// Returns a Result containing the Payload of the latest file.
+    ///
+    /// # Errors
+    ///
+    /// This function will return an error if:
+    /// * The WebDAV list operation fails.
+    /// * No files are found in the specified directory.
+    /// * The latest file cannot be retrieved or deserialized.
+    #[allow(dead_code)]
+    pub async fn fetch_latest_file(&self, dir: String) -> Result<Payload> {
+        let entries = self.client.list(&dir, Depth::Number(0)).await?;
+        let latest_file = entries.iter().map(|entity| {
+            match entity {
+                ListEntity::File(file) => file,
+                _ => panic!("Not a file"),
+            }
+        }).max_by_key(|file| file.last_modified);
+
+        let response = self.client.get(&latest_file.unwrap().href).await?;
+        if response.status().is_success() {
+            let content = response.bytes().await?;
+            let payload = serde_json::from_slice(&content)?;
+            Ok(payload)
+        } else {
+            Err(anyhow::anyhow!("Failed to fetch latest file"))
+        }
+    }
+
+    /// Fetches the metadata of the latest file from the specified directory on the WebDAV server.
+    ///
+    /// # Arguments
+    ///
+    /// * `dir` - A String representing the directory path to search for files.
+    ///
+    /// # Returns
+    ///
+    /// Returns a Result containing the metadata of the latest file.
+    ///
+    /// # Errors
+    ///
+    /// This function will return an error if:
+    /// * The WebDAV list operation fails.
+    /// * No files are found in the specified directory.
+    pub async fn fetch_latest_file_meta(&self, dir: String) -> Result<FileMetadata> {
+        let entries = self.client.list(&dir, Depth::Number(1)).await?;
+        let list_file = entries.iter()
+            .filter_map(|entity| match entity {
+                ListEntity::File(file) => Some(file),
+                _ => None,
+            })
+            .max_by_key(|file| file.last_modified)
+            .ok_or_else(|| anyhow::anyhow!("No files found"))?;
+
+        let meta = FileMetadata::from_list_file(&list_file, &self.client.host);
+        Ok(meta)
+    }
+
+    /// Deletes a file from the specified path on the WebDAV server.
+    ///
+    /// # Arguments
+    ///
+    /// * `path` - A String representing the path to delete the file from.
+    ///
+    /// # Returns
+    ///
+    /// Returns a Result containing `Ok(())` if the file is successfully deleted,
+    /// or an `Error` if the operation fails.
+    /// 
+    /// # Errors
+    /// 
+    /// This function will return an error if:
+    /// * The WebDAV delete operation fails.
+    #[allow(dead_code)]
+    pub async fn delete_file(&self, path: String) -> Result<()> {
+        self.client.delete(&path).await?;
+        Ok(())
+    }
+}
