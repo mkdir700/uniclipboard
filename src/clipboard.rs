@@ -74,8 +74,7 @@ impl CloudClipboardHandler {
     ///
     /// This function will return an error if the upload to the WebDAV server fails.
     pub async fn push(&self, payload: Payload) -> Result<(), Box<dyn Error>> {
-        let dir = format!("{}/{}", self.base_path, self.share_code);
-        self.client.upload(dir, payload).await?;
+        self.client.upload(self.base_path.clone(), payload).await?;
         Ok(())
     }
 
