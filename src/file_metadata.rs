@@ -36,6 +36,7 @@ impl FileMetadata {
     /// Get the device id from the filename
     ///
     /// The filename is in the format of {device_id}_{uuid}.json
+    #[allow(dead_code)]
     pub fn get_device_id(&self) -> String {
         self.name.split("_").next().unwrap().to_string()
     }

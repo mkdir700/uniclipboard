@@ -1,9 +1,10 @@
 use crate::config::CONFIG;
 use crate::{message::Payload, network::WebDAVClient};
 use bytes::Bytes;
-use chrono::Utc;
+use chrono::{DateTime, Utc};
 use clipboard::{ClipboardContext, ClipboardProvider};
 use rand::Rng;
+use std::sync::RwLock;
 use std::{
     collections::VecDeque,
     error::Error,
@@ -16,8 +17,13 @@ use tokio::task;
 #[derive(Clone)]
 pub struct CloudClipboardHandler {
     client: Arc<WebDAVClient>,
-    pub share_code: String,
+    last_modified: Arc<RwLock<Option<DateTime<Utc>>>>,
+    #[allow(dead_code)]
+    share_code: String,
     pub base_path: String,
+    // 是否在程序启动后，立即从云端拉取最近的一个内容
+    #[allow(dead_code)]
+    pull_on_start: bool,
 }
 
 #[derive(Clone)]
@@ -40,6 +46,8 @@ impl CloudClipboardHandler {
             client: Arc::new(client),
             share_code,
             base_path,
+            last_modified: Arc::new(RwLock::new(None)),
+            pull_on_start: true,
         }
     }
 
@@ -56,6 +64,17 @@ impl CloudClipboardHandler {
             .collect()
     }
 
+
+    /// The function `get_client` returns a cloned reference to the `WebDAVClient` wrapped in an `Arc`.
+    /// 
+    /// Returns:
+    /// 
+    /// An `Arc` (atomic reference counted) smart pointer to a `WebDAVClient` client is being returned.
+    #[allow(dead_code)]
+    pub fn get_client(&self) -> Arc<WebDAVClient> {
+        Arc::clone(&self.client)
+    }
+
     /// Pushes new content to the cloud clipboard.
     ///
     /// This method uploads the given content to the WebDAV server using the
@@ -67,15 +86,14 @@ impl CloudClipboardHandler {
     ///
     /// # Returns
     ///
-    /// Returns a Result which is Ok(()) if the upload is successful, or an Error
-    /// if the upload fails.
+    /// Returns the path of the uploaded file.
     ///
     /// # Errors
     ///
     /// This function will return an error if the upload to the WebDAV server fails.
-    pub async fn push(&self, payload: Payload) -> Result<(), Box<dyn Error>> {
-        self.client.upload(self.base_path.clone(), payload).await?;
-        Ok(())
+    pub async fn push(&self, payload: Payload) -> Result<String, Box<dyn Error>> {
+        let path = self.client.upload(self.base_path.clone(), payload).await?;
+        Ok(path)
     }
 
     /// Pulls the latest content from the cloud clipboard.
@@ -95,13 +113,22 @@ impl CloudClipboardHandler {
     /// This function will return an error if:
     /// - There's a failure in communicating with the WebDAV server
     /// - The latest file cannot be retrieved or parsed into a Payload
-    pub async fn pull(&self) -> Result<Payload, Box<dyn Error>> {
-        let mut latest_file_meta = self
-            .client
-            .fetch_latest_file_meta(self.base_path.clone())
-            .await?;
-        let mut latest_modified = latest_file_meta.last_modified;
+    pub async fn pull(&self, timeout: Option<Duration>) -> Result<Payload, Box<dyn Error>> {
+        // FIXME: 当前的逻辑，如果是在程序首次启动后，就会从云端拉取最新的
+        // 应该给出选项，在程序启动后，是否立即从云端拉取最近的一个内容
+        let start_time = Instant::now();
+        let mut latest_file_meta;
+
         loop {
+            if let Some(timeout) = timeout {
+                if start_time.elapsed() > timeout {
+                    return Err(Box::new(std::io::Error::new(
+                        std::io::ErrorKind::TimedOut,
+                        "Timeout while waiting for clipboard change",
+                    )));
+                }
+            }
+
             latest_file_meta = self
                 .client
                 .fetch_latest_file_meta(self.base_path.clone())
@@ -112,12 +139,23 @@ impl CloudClipboardHandler {
             let device_id = latest_file_meta.get_device_id();
             // 如果设备 id 相同,则跳过
             if device_id == CONFIG.read().unwrap().get_device_id() {
-                latest_modified = modified;
+                // 休眠 200ms
+                tokio::time::sleep(std::time::Duration::from_millis(200)).await;
                 continue;
             }
-
-            if modified > latest_modified {
+            let should_update = {
+                let last_modified = self.last_modified.read().unwrap();
+                match *last_modified {
+                    None => true,
+                    Some(last_modified) => modified > last_modified
+                }
+            };
+            if should_update {
                 let payload = self.client.download(file_path).await?;
+                {
+                    let mut last_modified = self.last_modified.write().unwrap();
+                    *last_modified = Some(modified);
+                }
                 return Ok(payload);
             }
 
@@ -253,7 +291,7 @@ impl Clipboard {
 
         task::spawn(async move {
             loop {
-                if let Ok(content) = cloud.pull().await {
+                if let Ok(content) = cloud.pull(None).await {
                     let mut queue = queue.lock().unwrap();
                     queue.push_back(content);
                 }
