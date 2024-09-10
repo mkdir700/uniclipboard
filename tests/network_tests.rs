@@ -43,7 +43,7 @@ async fn test_webdav_client_upload_and_download() -> Result<()> {
     assert_eq!(downloaded_payload.content, test_content);
 
     // 删除文件
-    client.delete_file(filepath.clone()).await?;
+    client.delete(filepath.clone()).await?;
     Ok(())
 }
 
@@ -80,8 +80,8 @@ async fn test_webdav_client_get_latest_added_file() -> Result<()> {
     assert_eq!(latest_file_meta.get_path(), file2_path);
 
     // 清理测试文件
-    client.delete_file(file1_path).await?;
-    client.delete_file(file2_path).await?;
+    client.delete(file1_path).await?;
+    client.delete(file2_path).await?;
 
     Ok(())
 }

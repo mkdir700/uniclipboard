@@ -195,7 +195,7 @@ impl WebDAVClient {
     /// This function will return an error if:
     /// * The WebDAV delete operation fails.
     #[allow(dead_code)]
-    pub async fn delete_file(&self, path: String) -> Result<()> {
+    pub async fn delete(&self, path: String) -> Result<()> {
         self.client.delete(&path).await?;
         Ok(())
     }
