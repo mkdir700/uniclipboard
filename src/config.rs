@@ -7,7 +7,7 @@ use once_cell::sync::Lazy;
 use std::sync::RwLock;
 
 pub static CONFIG: Lazy<RwLock<Config>> = Lazy::new(|| {
-    RwLock::new(Config::load().expect("Failed to load configuration"))
+    RwLock::new(Config::default())
 });
 
 #[derive(Deserialize, Serialize, Debug, Clone)]
@@ -19,12 +19,22 @@ pub struct Config {
 }
 
 impl Config {
+    pub fn default() -> Self {
+        Self {
+            device_id: String::new(),
+            webdav_url: String::new(),
+            username: String::new(),
+            password: String::new(),
+        }
+    }
+
     pub fn load() -> Result<Self> {
         let config_path = get_config_path()?;
         let config_str = fs::read_to_string(&config_path)
             .with_context(|| format!("Could not read config file: {:?}", config_path))?;
         let config: Config = toml::from_str(&config_str)
             .with_context(|| "Could not parse config file")?;
+        *CONFIG.write().unwrap() = config.clone();
         Ok(config)
     }
 
