@@ -1,12 +1,13 @@
 use uniclipboard::{LocalClipboardHandler, Payload};
 use bytes::Bytes;
 use chrono::Utc;
+use std::fs::File;
+use std::io::Write;
 use std::thread;
 use std::time::Duration;
 use std::panic::AssertUnwindSafe;
 use std::sync::Mutex;
 use lazy_static::lazy_static;
-
 
 lazy_static! {
     static ref CLIPBOARD_MUTEX: Mutex<()> = Mutex::new(());
@@ -92,4 +93,20 @@ fn test_local_clipboard_pull_no_change() {
     }));
 
     assert!(result.is_err(), "预期 pull 操作超时，但并未发生");
+}
+
+#[test]
+#[ignore = "该测试用例仅在本地测试环境下有效，在 CI/CD 环境下会报错，因为无法访问本地剪贴板"]
+fn test_read_image_from_local_clipboard() {
+    let _lock = CLIPBOARD_MUTEX.lock().unwrap();
+    let handler = LocalClipboardHandler::new();
+
+    let payload = handler.read().unwrap();
+    if let Payload::Image(image_payload) = payload {
+        println!("size: {} MB", image_payload.size as f32 / 1024.0 / 1024.0);
+        let mut file = File::create("test_image.png").unwrap();
+        file.write_all(&image_payload.content).unwrap();
+    } else {
+        panic!("读取到的 payload 不是图像");
+    }
 }

@@ -9,8 +9,11 @@ use uniclipboard::{
     clipboard::CloudClipboardHandler,
     config::{Config, CONFIG},
     message::Payload,
-    network::WebDAVClient,
+    network::WebDAVClient, LocalClipboardHandler,
 };
+use image::ImageReader;
+use std::path::PathBuf;
+use std::fs;
 
 static INIT: Once = Once::new();
 
@@ -162,6 +165,69 @@ async fn test_cloud_clipboard_pull_image() {
         assert_eq!(image_payload.format, "png");
         assert_eq!(image_payload.size, 100);
     }
+}
+
+
+#[tokio::test]
+async fn test_push_and_pull_image() -> Result<(), Box<dyn std::error::Error>> {
+    setup();
+    // 1. 读取测试图片
+    let image_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("test_resources")
+        .join("2048.jpeg");
+    
+    let img = ImageReader::open(&image_path)?.decode()?;
+    let (width, height) = (img.width(), img.height());
+    let image_bytes = fs::read(&image_path)?;
+
+    // 创建 Payload
+    let original_payload = Payload::new_image(
+        Bytes::from(image_bytes.clone()),
+        "test_device".to_string(),
+        Utc::now(),
+        width as usize,
+        height as usize,
+        "jpeg".to_string(),
+        image_bytes.len(),
+    );
+
+    // 创建 CloudClipboardHandler
+    let client = WebDAVClient::new(
+        CONFIG.read().unwrap().get_webdav_url(),
+        CONFIG.read().unwrap().get_username(),
+        CONFIG.read().unwrap().get_password(),
+    ).await?;
+    let cloud_handler = CloudClipboardHandler::new(client);
+    let local_handler = LocalClipboardHandler::new();
+
+    // 2. 将图片 push 到云端
+    let path = cloud_handler.push(original_payload.clone()).await?;
+    println!("上传后的文件路径: {}", path);
+
+    // 3. 从云端 pull 到本地
+    let pulled_payload = cloud_handler.pull(Some(Duration::from_secs(5))).await?;
+    // local_handler.write(pulled_payload.clone())?;
+
+    // 4. 对比两份数据是否一致
+    match (original_payload, pulled_payload.clone()) {
+        (Payload::Image(original), Payload::Image(pulled)) => {
+            assert_eq!(original.width, pulled.width);
+            assert_eq!(original.height, pulled.height);
+            assert_eq!(original.format, pulled.format);
+            assert_eq!(original.size, pulled.size);
+            assert_eq!(original.content, pulled.content);
+            println!("图片数据一致性验证通过");
+            println!("拉取的图片大小: {} bytes", pulled.content.len());
+
+            // 解码 base64 并保存图片以进行视觉验证
+            // fs::write("pulled_image.jpeg", &pulled.content)?;
+            // println!("拉取的图片已保存为 'pulled_image.jpeg'");
+            // local_handler.write(pulled_payload.clone())?;
+        },
+        _ => panic!("Payload 类型不匹配"),
+    }
+
+    Ok(())
 }
 
 // #[test]
