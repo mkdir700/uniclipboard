@@ -6,9 +6,6 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-# 剪贴板操作
-clipboard = "0.5"
-
 # 网络通信
 tokio = { version = "1", features = ["full"] }
 tokio-util = { version = "0.7", features = ["codec"] }
@@ -39,6 +36,7 @@ base64 = "0.22.1"
 dirs = "5.0.1"
 toml = "0.8.19"
 once_cell = "1.19.0"
+arboard = "3.4.0"
 
 [dependencies.uuid]
 version = "1.10.0"
