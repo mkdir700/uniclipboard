@@ -24,7 +24,7 @@ fn test_file_metadata_from_list_file() {
     let list_file = create_list_file(
         "/dav/test/path/test_file.txt",
         100,
-        Utc.ymd(2023, 5, 1).and_hms(12, 0, 0),
+        Utc.with_ymd_and_hms(2023, 5, 1, 12, 0, 0).unwrap(),
         "text/plain",
         Some("etag123".to_string()),
     );
@@ -36,7 +36,7 @@ fn test_file_metadata_from_list_file() {
     assert_eq!(metadata.size, 100);
     assert_eq!(
         metadata.last_modified,
-        Utc.ymd(2023, 5, 1).and_hms(12, 0, 0)
+        Utc.with_ymd_and_hms(2023, 5, 1, 12, 0, 0).unwrap()
     );
     assert_eq!(metadata.content_type, "text/plain");
     assert_eq!(metadata.tag, Some("etag123".to_string()));
@@ -79,7 +79,7 @@ fn test_file_metadata_is_newer_than() {
         &create_list_file(
             "/dav/test/older.txt",
             100,
-            Utc.ymd(2023, 5, 1).and_hms(12, 0, 0),
+            Utc.with_ymd_and_hms(2023, 5, 1, 12, 0, 0).unwrap(),
             "text/plain",
             None,
         ),
@@ -89,7 +89,7 @@ fn test_file_metadata_is_newer_than() {
         &create_list_file(
             "/dav/test/newer.txt",
             100,
-            Utc.ymd(2023, 5, 2).and_hms(12, 0, 0),
+            Utc.with_ymd_and_hms(2023, 5, 2, 12, 0, 0).unwrap(),
             "text/plain",
             None,
         ),
