@@ -68,7 +68,7 @@ impl WebDAVClient {
     /// 
     /// Returns a Result containing the path of the uploaded file.
     pub async fn upload(&self, dir: String, payload: Payload) -> Result<String> {
-        let filename = format!("{}_{}.json", payload.device_id, payload.hash());
+        let filename = format!("{}_{}.json", payload.get_device_id(), payload.hash());
         let path: String;
         if dir == "/" {
             path = format!("/{}", filename);

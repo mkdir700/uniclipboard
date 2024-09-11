@@ -6,17 +6,36 @@ use serde::{Deserialize, Serialize};
 use serde_json;
 use sha2::{Digest, Sha256};
 
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub enum Payload {
+    Text(TextPayload),
+    Image(ImagePayload),
+}
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
-pub struct Payload {
+pub struct TextPayload {
     #[serde(
         serialize_with = "serialize_bytes",
         deserialize_with = "deserialize_bytes"
     )]
     pub content: Bytes,
-    pub content_type: String,
     pub device_id: String,
     pub timestamp: DateTime<Utc>,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct ImagePayload {
+    #[serde(
+        serialize_with = "serialize_bytes",
+        deserialize_with = "deserialize_bytes"
+    )]
+    pub content: Bytes,
+    pub device_id: String,
+    pub timestamp: DateTime<Utc>,
+    pub width: usize,
+    pub height: usize,
+    pub format: String,
+    pub size: usize,
 }
 
 fn serialize_bytes<S>(bytes: &Bytes, serializer: S) -> Result<S::Ok, S::Error>
@@ -39,23 +58,73 @@ where
 }
 
 impl Payload {
-    pub fn new(
-        content: Bytes,
-        content_type: String,
-        device_id: String,
-        timestamp: DateTime<Utc>,
-    ) -> Self {
-        Payload {
+    pub fn new_text(content: Bytes, device_id: String, timestamp: DateTime<Utc>) -> Self {
+        Payload::Text(TextPayload {
             content,
-            content_type,
             device_id,
             timestamp,
+        })
+    }
+
+    pub fn new_image(
+        content: Bytes,
+        device_id: String,
+        timestamp: DateTime<Utc>,
+        width: usize,
+        height: usize,
+        format: String,
+        size: usize,
+    ) -> Self {
+        Payload::Image(ImagePayload {
+            content,
+            device_id,
+            timestamp,
+            width,
+            height,
+            format,
+            size,
+        })
+    }
+
+    pub fn get_content(&self) -> &Bytes {
+        match self {
+            Payload::Text(p) => &p.content,
+            Payload::Image(p) => &p.content,
+        }
+    }
+
+    pub fn get_device_id(&self) -> &str {
+        match self {
+            Payload::Text(p) => &p.device_id,
+            Payload::Image(p) => &p.device_id,
+        }
+    }
+
+    #[allow(dead_code)]
+    pub fn get_timestamp(&self) -> DateTime<Utc> {
+        match self {
+            Payload::Text(p) => p.timestamp,
+            Payload::Image(p) => p.timestamp,
+        }
+    }
+
+    #[allow(dead_code)]
+    pub fn is_image(&self) -> bool {
+        matches!(self, Payload::Image(_))
+    }
+    
+    #[allow(dead_code)]
+    pub fn as_image(&self) -> Option<&ImagePayload> {
+        if let Payload::Image(image) = self {
+            Some(image)
+        } else {
+            None
         }
     }
 
     pub fn hash(&self) -> String {
         let mut hasher = Sha256::new();
-        hasher.update(&self.content);
+        hasher.update(self.get_content());
         hex::encode(hasher.finalize())
     }
 

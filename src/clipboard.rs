@@ -1,9 +1,11 @@
 use crate::config::CONFIG;
 use crate::{message::Payload, network::WebDAVClient};
+use arboard::Clipboard as ArboardClipboard;
 use bytes::Bytes;
 use chrono::{DateTime, Utc};
-use clipboard::{ClipboardContext, ClipboardProvider};
+use log::info;
 use rand::Rng;
+use std::borrow::Cow;
 use std::sync::RwLock;
 use std::{
     collections::VecDeque,
@@ -28,7 +30,7 @@ pub struct CloudClipboardHandler {
 
 #[derive(Clone)]
 pub struct LocalClipboardHandler {
-    ctx: Arc<Mutex<ClipboardContext>>,
+    ctx: Arc<Mutex<ArboardClipboard>>,
 }
 
 pub struct Clipboard {
@@ -64,11 +66,10 @@ impl CloudClipboardHandler {
             .collect()
     }
 
-
     /// The function `get_client` returns a cloned reference to the `WebDAVClient` wrapped in an `Arc`.
-    /// 
+    ///
     /// Returns:
-    /// 
+    ///
     /// An `Arc` (atomic reference counted) smart pointer to a `WebDAVClient` client is being returned.
     #[allow(dead_code)]
     pub fn get_client(&self) -> Arc<WebDAVClient> {
@@ -147,7 +148,7 @@ impl CloudClipboardHandler {
                 let last_modified = self.last_modified.read().unwrap();
                 match *last_modified {
                     None => true,
-                    Some(last_modified) => modified > last_modified
+                    Some(last_modified) => modified > last_modified,
                 }
             };
             if should_update {
@@ -168,7 +169,17 @@ impl CloudClipboardHandler {
 impl LocalClipboardHandler {
     pub fn new() -> Self {
         Self {
-            ctx: Arc::new(Mutex::new(ClipboardContext::new().unwrap())),
+            ctx: Arc::new(Mutex::new(ArboardClipboard::new().unwrap())),
+        }
+    }
+
+    fn bytes_to_cow(bytes: &Bytes) -> Cow<'static, [u8]> {
+        // 如果 Bytes 是空的，返回一个空的借用切片
+        if bytes.is_empty() {
+            Cow::Borrowed(&[])
+        } else {
+            // 将 Bytes 转换为 Vec<u8>
+            Cow::Owned(bytes.to_vec())
         }
     }
 
@@ -187,16 +198,21 @@ impl LocalClipboardHandler {
     ///
     /// This function will return an error if it fails to set the clipboard contents.
     pub fn write(&self, payload: Payload) -> Result<(), Box<dyn Error>> {
-        // 根据 payload 的 content_type 来决定写入的格式
-        // 目前暂时只支持 text 格式
-        if payload.content_type != "text" {
-            return Err(Box::new(std::io::Error::new(
-                std::io::ErrorKind::Other,
-                "Unsupported content type",
-            )));
+        let mut clipboard = self.ctx.lock().unwrap();
+        match payload {
+            Payload::Text(text) => {
+                let content = String::from_utf8(text.content.to_vec())?;
+                clipboard.set_text(content)?;
+            }
+            Payload::Image(image) => {
+                let image = arboard::ImageData {
+                    width: 0,  // 需要设置正确的宽度
+                    height: 0, // 需要设置正确的高度
+                    bytes: Self::bytes_to_cow(&image.content),
+                };
+                clipboard.set_image(image)?;
+            }
         }
-        let content = String::from_utf8(payload.content.to_vec())?;
-        self.ctx.lock().unwrap().set_contents(content)?;
         Ok(())
     }
 
@@ -211,14 +227,34 @@ impl LocalClipboardHandler {
     ///
     /// 此函数在无法读取剪贴板内容时将返回错误。
     pub fn read(&self) -> Result<Payload, Box<dyn Error>> {
-        let content = self.ctx.lock().unwrap().get_contents()?;
-        let payload = Payload::new(
-            Bytes::from(content),
-            "text".to_string(),
-            CONFIG.read().unwrap().get_device_id(),
-            Utc::now(),
-        );
-        Ok(payload)
+        let mut clipboard = self.ctx.lock().unwrap();
+        if let Ok(text) = clipboard.get_text() {
+            Ok(Payload::new_text(
+                Bytes::from(text),
+                CONFIG.read().unwrap().get_device_id(),
+                Utc::now(),
+            ))
+        } else if let Ok(image) = clipboard.get_image() {
+            let image_bytes = match image.bytes {
+                Cow::Borrowed(slice) => Bytes::copy_from_slice(slice),
+                Cow::Owned(vec) => Bytes::from(vec),
+            };
+            // 处理图片数据
+            Ok(Payload::new_image(
+                image_bytes.clone(),
+                CONFIG.read().unwrap().get_device_id(),
+                Utc::now(),
+                image.width,
+                image.height,
+                "png".to_string(),
+                image_bytes.len(),
+            ))
+        } else {
+            Err(Box::new(std::io::Error::new(
+                std::io::ErrorKind::Other,
+                "不支持的剪贴板内容",
+            )))
+        }
     }
 
     /// 持续监视本地剪贴板的变化。
@@ -270,13 +306,13 @@ impl Clipboard {
     }
 
     pub async fn watch(&self) -> Result<(), Box<dyn Error>> {
-        let cloud_watcher = self.cloud_watch_task();
+        let _cloud_watcher = self.cloud_watch_task();
         let local_watcher = self.local_watch_task();
         let cloud_to_local_handler = self.cloud_to_local_task();
         let local_to_cloud_handler = self.local_to_cloud_task();
 
         tokio::try_join!(
-            cloud_watcher,
+            // cloud_watcher,
             local_watcher,
             cloud_to_local_handler,
             local_to_cloud_handler
@@ -308,9 +344,9 @@ impl Clipboard {
 
         task::spawn(async move {
             loop {
-                if let Ok(content) = local.pull(None) {
+                if let Ok(payload) = local.pull(None) {
                     let mut queue = queue.lock().unwrap();
-                    queue.push_back(content);
+                    queue.push_back(payload);
                 }
             }
         })
@@ -351,8 +387,20 @@ impl Clipboard {
                     queue.pop_front()
                 };
 
-                if let Some(payload) = payload {
-                    cloud.push(payload).await.unwrap();
+                if let Some(p) = payload {
+                    cloud.push(p.clone()).await.unwrap();
+                    match p {
+                        Payload::Text(text) => {
+                            info!("Push text to cloud: {} bytes", text.content.len());
+                        }
+                        Payload::Image(image) => {
+                            let size = image.size as f64 / 1024.0 / 1024.0;
+                            info!(
+                                "Push image to cloud: Size: {:.2} Mb, Width: {} px, Height: {} px",
+                                size, image.width, image.height
+                            );
+                        }
+                    }
                 }
             }
         })
