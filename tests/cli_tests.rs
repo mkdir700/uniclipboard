@@ -10,9 +10,9 @@ fn test_parse_args_with_all_options() {
         "--password", "testpass"
     ]);
 
-    assert_eq!(args.webdav_url, "https://example.com/webdav");
-    assert_eq!(args.username, "testuser");
-    assert_eq!(args.password, "testpass");
+    assert_eq!(args.webdav_url, Some("https://example.com/webdav".to_string()));
+    assert_eq!(args.username, Some("testuser".to_string()));
+    assert_eq!(args.password, Some("testpass".to_string()));
 }
 
 #[test]
@@ -24,22 +24,9 @@ fn test_parse_args_with_short_options() {
         "-p", "testpass"
     ]);
 
-    assert_eq!(args.webdav_url, "https://example.com/webdav");
-    assert_eq!(args.username, "testuser");
-    assert_eq!(args.password, "testpass");
-}
-
-#[test]
-fn test_parse_args_missing_required_option() {
-    let result = Args::try_parse_from([
-        "test",
-        "--username", "testuser",
-        "--password", "testpass"
-    ]);
-
-    assert!(result.is_err());
-    let err = result.unwrap_err();
-    assert!(err.to_string().contains("--webdav-url"));
+    assert_eq!(args.webdav_url, Some("https://example.com/webdav".to_string()));
+    assert_eq!(args.username, Some("testuser".to_string()));
+    assert_eq!(args.password, Some("testpass".to_string()));
 }
 
 #[test]
@@ -51,9 +38,9 @@ fn test_parse_args_function() {
         "--password".to_string(), "testpass".to_string()
     ]);
 
-    assert_eq!(args.webdav_url, "https://example.com/webdav");
-    assert_eq!(args.username, "testuser");
-    assert_eq!(args.password, "testpass");
+    assert_eq!(args.webdav_url, Some("https://example.com/webdav".to_string()));
+    assert_eq!(args.username, Some("testuser".to_string()));
+    assert_eq!(args.password, Some("testpass".to_string()));
 }
 
 // 添加这个辅助函数用于测试

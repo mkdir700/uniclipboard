@@ -7,44 +7,36 @@ mod file_metadata;
 
 use crate::cli::parse_args;
 use crate::clipboard::{Clipboard, CloudClipboardHandler, LocalClipboardHandler};
-use crate::config::Config;
-use crate::config::CONFIG;
+use crate::config::{CONFIG, Config};
 use crate::network::WebDAVClient;
 use anyhow::Result;
 use log::info;
-use uuid::Uuid;
+use env_logger::Env;
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    env_logger::init();
+    env_logger::Builder::from_env(Env::default().default_filter_or("info")).init();
 
     let args = parse_args();
 
-    // 尝试加载配置,如果不存在则创建新的
-    let config = Config::load().unwrap_or_else(|_| Config {
-        device_id: Uuid::new_v4().to_string(),
-        webdav_url: args.webdav_url.clone(),
-        username: args.username.clone(),
-        password: args.password.clone(),
-    });
-
     {
-        let mut config = CONFIG.write().unwrap();
+        let mut config = Config::load()?;
         // 如果命令行参数提供了值,则更新配置
-        if !args.webdav_url.is_empty() {
-            config.webdav_url = args.webdav_url;
+        if args.webdav_url.is_some() {
+            config.webdav_url = args.webdav_url.unwrap();
         }
-        if !args.username.is_empty() {
-            config.username = args.username;
+        if args.username.is_some() {
+            config.username = args.username.unwrap();
         }
-        if !args.password.is_empty() {
-            config.password = args.password;
+        if args.password.is_some() {
+            config.password = args.password.unwrap();
         }
 
         // 保存配置
         config.save()?;
     }
 
+    let config = CONFIG.read().unwrap();
     // 使用更新后的配置创建 WebDAVClient
     let client = WebDAVClient::new(
         config.get_webdav_url(),

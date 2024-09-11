@@ -16,6 +16,11 @@ pub struct Config {
     pub webdav_url: String,
     pub username: String,
     pub password: String,
+    pub push_interval: Option<u64>,  // ms
+    pub pull_interval: Option<u64>,  // ms
+    pub sync_interval: Option<u64>,  // ms
+    pub enable_push: Option<bool>,
+    pub enable_pull: Option<bool>,
 }
 
 impl Config {
@@ -25,6 +30,11 @@ impl Config {
             webdav_url: String::new(),
             username: String::new(),
             password: String::new(),
+            push_interval: Some(500),
+            pull_interval: Some(500),
+            sync_interval: Some(500),
+            enable_push: Some(true),
+            enable_pull: Some(true),
         }
     }
 
@@ -44,6 +54,7 @@ impl Config {
         fs::create_dir_all(config_path.parent().unwrap())?;
         fs::write(&config_path, config_str)
             .with_context(|| format!("Could not write config file: {:?}", config_path))?;
+        CONFIG.write().unwrap().clone_from(self);
         Ok(())
     }
 

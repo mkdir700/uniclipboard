@@ -1,4 +1,4 @@
-use uniclipboard::config::{Config, get_config_path};
+use uniclipboard::config::{Config, get_config_path, CONFIG};
 use std::fs;
 use tempfile::tempdir;
 use std::env;
@@ -22,7 +22,8 @@ fn test_load_config() {
     // 重写 get_config_path 函数以返回正确的测试配置路径
     env::set_var("UNICLIPBOARD_CONFIG_PATH", config_path.to_str().unwrap());
 
-    let config = Config::load().unwrap();
+    Config::load().unwrap();
+    let config = CONFIG.read().unwrap();
     assert_eq!(config.device_id, "test_device");
     assert_eq!(config.webdav_url, "https://example.com/webdav");
     assert_eq!(config.username, "testuser");
@@ -45,6 +46,11 @@ fn test_save_config() {
         webdav_url: "https://save.example.com/webdav".to_string(),
         username: "save_testuser".to_string(),
         password: "save_testpass".to_string(),
+        push_interval: Some(500),
+        pull_interval: Some(500),
+        sync_interval: Some(500),
+        enable_push: Some(true),
+        enable_pull: Some(true),
     };
 
     config.save().unwrap();
@@ -52,7 +58,7 @@ fn test_save_config() {
     // 确保配置文件已经被创建
     assert!(config_path.exists());
 
-    let saved_config = Config::load().unwrap();
+    let saved_config = CONFIG.read().unwrap();
     assert_eq!(saved_config.device_id, "save_test_device");
     assert_eq!(saved_config.webdav_url, "https://save.example.com/webdav");
     assert_eq!(saved_config.username, "save_testuser");

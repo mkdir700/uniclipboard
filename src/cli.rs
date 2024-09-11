@@ -4,13 +4,13 @@ use clap::Parser;
 #[command(author, version, about, long_about = None)]
 pub struct Args {
     #[arg(short, long)]
-    pub webdav_url: String,
+    pub webdav_url: Option<String>,
 
     #[arg(short, long)]
-    pub username: String,
+    pub username: Option<String>,
 
     #[arg(short, long)]
-    pub password: String,
+    pub password: Option<String>,
 }
 
 pub fn parse_args() -> Args {

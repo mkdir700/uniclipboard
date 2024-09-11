@@ -22,6 +22,11 @@ fn setup() {
             webdav_url: env::var("WEBDAV_URL").expect("WEBDAV_URL not set"),
             username: env::var("WEBDAV_USERNAME").expect("WEBDAV_USERNAME not set"),
             password: env::var("WEBDAV_PASSWORD").expect("WEBDAV_PASSWORD not set"),
+            push_interval: Some(500),
+            pull_interval: Some(500),
+            sync_interval: Some(500),
+            enable_push: Some(true),
+            enable_pull: Some(true),
         };
         *CONFIG.write().unwrap() = test_config;
     });
