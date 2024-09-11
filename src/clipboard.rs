@@ -3,9 +3,10 @@ use crate::{message::Payload, network::WebDAVClient};
 use arboard::Clipboard as ArboardClipboard;
 use bytes::Bytes;
 use chrono::{DateTime, Utc};
+use image::{DynamicImage, ImageBuffer, Rgba, ImageFormat};
 use log::info;
 use rand::Rng;
-use std::borrow::Cow;
+use std::io::Cursor;
 use std::sync::RwLock;
 use std::{
     collections::VecDeque,
@@ -173,16 +174,6 @@ impl LocalClipboardHandler {
         }
     }
 
-    fn bytes_to_cow(bytes: &Bytes) -> Cow<'static, [u8]> {
-        // 如果 Bytes 是空的，返回一个空的借用切片
-        if bytes.is_empty() {
-            Cow::Borrowed(&[])
-        } else {
-            // 将 Bytes 转换为 Vec<u8>
-            Cow::Owned(bytes.to_vec())
-        }
-    }
-
     /// Writes content to the local clipboard.
     ///
     /// # Arguments
@@ -205,12 +196,18 @@ impl LocalClipboardHandler {
                 clipboard.set_text(content)?;
             }
             Payload::Image(image) => {
-                let image = arboard::ImageData {
-                    width: 0,  // 需要设置正确的宽度
-                    height: 0, // 需要设置正确的高度
-                    bytes: Self::bytes_to_cow(&image.content),
+                // 从 PNG 数据解码图像
+                let img = image::load_from_memory(&image.content)?;
+
+                // 转换为 RGBA
+                let rgba_img = img.to_rgba8();
+
+                let image_data = arboard::ImageData {
+                    width: image.width,
+                    height: image.height,
+                    bytes: rgba_img.into_raw().into(),
                 };
-                clipboard.set_image(image)?;
+                clipboard.set_image(image_data)?;
             }
         }
         Ok(())
@@ -235,19 +232,34 @@ impl LocalClipboardHandler {
                 Utc::now(),
             ))
         } else if let Ok(image) = clipboard.get_image() {
-            let image_bytes = match image.bytes {
-                Cow::Borrowed(slice) => Bytes::copy_from_slice(slice),
-                Cow::Owned(vec) => Bytes::from(vec),
-            };
-            // 处理图片数据
+            let raw_image_bytes = image.bytes.to_vec();
+            let img = ImageBuffer::<Rgba<u8>, _>::from_raw(
+                image.width as u32,
+                image.height as u32,
+                raw_image_bytes.clone(),
+            )
+            .ok_or_else(|| {
+                Box::new(std::io::Error::new(
+                    std::io::ErrorKind::InvalidData,
+                    "无法创建图像缓冲区",
+                ))
+            })?;
+
+            let dynamic_img = DynamicImage::ImageRgba8(img);
+
+            // 压缩为 PNG 格式
+            let mut png_data = Vec::new();
+            dynamic_img.write_to(&mut Cursor::new(&mut png_data), ImageFormat::Png)?;
+            let size = png_data.len() as usize;
+            // 创建 Payload
             Ok(Payload::new_image(
-                image_bytes.clone(),
+                Bytes::from(png_data),
                 CONFIG.read().unwrap().get_device_id(),
                 Utc::now(),
                 image.width,
                 image.height,
                 "png".to_string(),
-                image_bytes.len(),
+                size,
             ))
         } else {
             Err(Box::new(std::io::Error::new(
@@ -306,8 +318,8 @@ impl Clipboard {
     }
 
     pub async fn watch(&self) -> Result<(), Box<dyn Error>> {
-        let _cloud_watcher = self.cloud_watch_task();
-        let local_watcher = self.local_watch_task();
+        let _cloud_watcher = self.watch_cloud_clipboard();
+        let local_watcher = self.watch_local_clipboard();
         let cloud_to_local_handler = self.cloud_to_local_task();
         let local_to_cloud_handler = self.local_to_cloud_task();
 
@@ -321,7 +333,7 @@ impl Clipboard {
         Ok(())
     }
 
-    async fn cloud_watch_task(&self) -> Result<(), Box<dyn Error>> {
+    async fn watch_cloud_clipboard(&self) -> Result<(), Box<dyn Error>> {
         let cloud = self.cloud.clone();
         let queue = Arc::clone(&self.cloud_to_local_queue);
 
@@ -339,7 +351,7 @@ impl Clipboard {
         Ok(())
     }
 
-    async fn local_watch_task(&self) -> Result<(), Box<dyn Error>> {
+    async fn watch_local_clipboard(&self) -> Result<(), Box<dyn Error>> {
         let mut local = self.local.clone();
         let queue = Arc::clone(&self.local_to_cloud_queue);
 
