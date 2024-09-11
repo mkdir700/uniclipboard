@@ -198,7 +198,7 @@ async fn test_push_and_pull_image() -> Result<(), Box<dyn std::error::Error>> {
         CONFIG.read().unwrap().get_password(),
     ).await?;
     let cloud_handler = CloudClipboardHandler::new(client);
-    let local_handler = LocalClipboardHandler::new();
+    let _local_handler = LocalClipboardHandler::new();
 
     // 2. 将图片 push 到云端
     let path = cloud_handler.push(original_payload.clone()).await?;
