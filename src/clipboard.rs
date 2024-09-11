@@ -5,7 +5,6 @@ use bytes::Bytes;
 use chrono::{DateTime, Utc};
 use image::{DynamicImage, ImageBuffer, Rgba, ImageFormat};
 use log::info;
-use rand::Rng;
 use std::io::Cursor;
 use std::sync::RwLock;
 use std::{
@@ -21,8 +20,6 @@ use tokio::task;
 pub struct CloudClipboardHandler {
     client: Arc<WebDAVClient>,
     last_modified: Arc<RwLock<Option<DateTime<Utc>>>>,
-    #[allow(dead_code)]
-    share_code: String,
     pub base_path: String,
     // 是否在程序启动后，立即从云端拉取最近的一个内容
     #[allow(dead_code)]
@@ -43,28 +40,13 @@ pub struct Clipboard {
 
 impl CloudClipboardHandler {
     pub fn new(client: WebDAVClient) -> Self {
-        let share_code = Self::generate_share_code();
-        let base_path = format!("/uniclipboard/{}", share_code);
+        let base_path = format!("/uniclipboard/");
         Self {
             client: Arc::new(client),
-            share_code,
             base_path,
             last_modified: Arc::new(RwLock::new(None)),
             pull_on_start: true,
         }
-    }
-
-    fn generate_share_code() -> String {
-        const CHARSET: &[u8] = b"0123456789";
-        const CODE_LEN: usize = 6;
-
-        let mut rng = rand::thread_rng();
-        (0..CODE_LEN)
-            .map(|_| {
-                let idx = rng.gen_range(0..CHARSET.len());
-                CHARSET[idx] as char
-            })
-            .collect()
     }
 
     /// The function `get_client` returns a cloned reference to the `WebDAVClient` wrapped in an `Arc`.
@@ -318,13 +300,13 @@ impl Clipboard {
     }
 
     pub async fn watch(&self) -> Result<(), Box<dyn Error>> {
-        let _cloud_watcher = self.watch_cloud_clipboard();
+        let cloud_watcher = self.watch_cloud_clipboard();
         let local_watcher = self.watch_local_clipboard();
         let cloud_to_local_handler = self.cloud_to_local_task();
         let local_to_cloud_handler = self.local_to_cloud_task();
 
         tokio::try_join!(
-            // cloud_watcher,
+            cloud_watcher,
             local_watcher,
             cloud_to_local_handler,
             local_to_cloud_handler
