@@ -1,7 +1,6 @@
 use reqwest_dav::{list_cmd::ListEntity, Auth, ClientBuilder, Depth};
 use anyhow::Result;
 use std::result::Result::Ok;
-use uuid::Uuid;
 use crate::message::Payload;
 use crate::file_metadata::FileMetadata;
 
@@ -69,8 +68,7 @@ impl WebDAVClient {
     /// 
     /// Returns a Result containing the path of the uploaded file.
     pub async fn upload(&self, dir: String, payload: Payload) -> Result<String> {
-        let uuid = Uuid::new_v4().to_string();
-        let filename = format!("{}_{}.json", payload.device_id, uuid);
+        let filename = format!("{}_{}.json", payload.device_id, payload.hash());
         let path: String;
         if dir == "/" {
             path = format!("/{}", filename);
