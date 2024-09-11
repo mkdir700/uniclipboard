@@ -215,7 +215,7 @@ impl LocalClipboardHandler {
         let payload = Payload::new(
             Bytes::from(content),
             "text".to_string(),
-            "local".to_string(), // TODO: get device id
+            CONFIG.read().unwrap().get_device_id(),
             Utc::now(),
         );
         Ok(payload)
