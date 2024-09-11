@@ -327,10 +327,11 @@ impl Clipboard {
 
         task::spawn(async move {
             loop {
-                if let Ok(content) = cloud.pull(None).await {
+                if let Ok(content) = cloud.pull(Some(Duration::from_secs(1))).await {
                     let mut queue = queue.lock().unwrap();
                     queue.push_back(content);
                 }
+                tokio::time::sleep(Duration::from_millis(100)).await;
             }
         })
         .await?;
@@ -344,10 +345,11 @@ impl Clipboard {
 
         task::spawn(async move {
             loop {
-                if let Ok(payload) = local.pull(None) {
+                if let Ok(payload) = local.pull(Some(Duration::from_secs(1))) {
                     let mut queue = queue.lock().unwrap();
                     queue.push_back(payload);
                 }
+                tokio::time::sleep(Duration::from_millis(100)).await;
             }
         })
         .await?;
@@ -368,6 +370,8 @@ impl Clipboard {
 
                 if let Some(payload) = payload {
                     local.write(payload).unwrap();
+                } else {
+                    tokio::time::sleep(Duration::from_millis(100)).await;
                 }
             }
         })
@@ -401,6 +405,8 @@ impl Clipboard {
                             );
                         }
                     }
+                } else {
+                    tokio::time::sleep(Duration::from_millis(100)).await;
                 }
             }
         })
