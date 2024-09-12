@@ -6,7 +6,7 @@ use std::env;
 use std::sync::Once;
 use std::time::Duration;
 use uniclipboard::{
-    clipboard::CloudClipboardHandler,
+    clipboard_handler::CloudClipboardHandler,
     config::{Config, CONFIG},
     message::Payload,
     network::WebDAVClient, LocalClipboardHandler,
