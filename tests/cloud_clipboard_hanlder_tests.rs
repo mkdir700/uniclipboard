@@ -169,6 +169,7 @@ async fn test_cloud_clipboard_pull_image() {
 
 
 #[tokio::test]
+#[ignore = "该测试用例仅在本地测试环境下有效，在 CI/CD 环境下会报错，因为无法访问本地剪贴板"]
 async fn test_push_and_pull_image() -> Result<(), Box<dyn std::error::Error>> {
     setup();
     // 1. 读取测试图片
@@ -198,7 +199,7 @@ async fn test_push_and_pull_image() -> Result<(), Box<dyn std::error::Error>> {
         CONFIG.read().unwrap().get_password(),
     ).await?;
     let cloud_handler = CloudClipboardHandler::new(client);
-    let _local_handler = LocalClipboardHandler::new();
+    let local_handler = LocalClipboardHandler::new();
 
     // 2. 将图片 push 到云端
     let path = cloud_handler.push(original_payload.clone()).await?;
@@ -206,7 +207,7 @@ async fn test_push_and_pull_image() -> Result<(), Box<dyn std::error::Error>> {
 
     // 3. 从云端 pull 到本地
     let pulled_payload = cloud_handler.pull(Some(Duration::from_secs(5))).await?;
-    // local_handler.write(pulled_payload.clone())?;
+    local_handler.write(pulled_payload.clone())?;
 
     // 4. 对比两份数据是否一致
     match (original_payload, pulled_payload.clone()) {
