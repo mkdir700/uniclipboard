@@ -4,7 +4,7 @@ use arboard::Clipboard as ArboardClipboard;
 use bytes::Bytes;
 use chrono::{DateTime, Utc};
 use image::{DynamicImage, ImageBuffer, Rgba, ImageFormat};
-use log::info;
+use log::{info, trace};
 use std::io::Cursor;
 use std::sync::RwLock;
 use std::{
@@ -171,6 +171,7 @@ impl LocalClipboardHandler {
     ///
     /// This function will return an error if it fails to set the clipboard contents.
     pub fn write(&self, payload: Payload) -> Result<(), Box<dyn Error>> {
+        // ! 优化 payload 参数，应该使用引用
         let mut clipboard = self.ctx.lock().unwrap();
         match payload {
             Payload::Text(text) => {
@@ -322,6 +323,7 @@ impl Clipboard {
         task::spawn(async move {
             loop {
                 if let Ok(content) = cloud.pull(Some(Duration::from_secs(1))).await {
+                    trace!("Watch new content from cloud: {}", content);
                     let mut queue = queue.lock().unwrap();
                     queue.push_back(content);
                 }
@@ -340,6 +342,7 @@ impl Clipboard {
         task::spawn(async move {
             loop {
                 if let Ok(payload) = local.pull(Some(Duration::from_secs(1))) {
+                    trace!("Watch new content from local: {}", payload);
                     let mut queue = queue.lock().unwrap();
                     queue.push_back(payload);
                 }
@@ -362,8 +365,9 @@ impl Clipboard {
                     queue.pop_front()
                 };
 
-                if let Some(payload) = payload {
-                    local.write(payload).unwrap();
+                if let Some(p) = payload {
+                    info!("Push to local: {}", p);
+                    local.write(p).unwrap();
                 } else {
                     tokio::time::sleep(Duration::from_millis(100)).await;
                 }
@@ -386,19 +390,8 @@ impl Clipboard {
                 };
 
                 if let Some(p) = payload {
-                    cloud.push(p.clone()).await.unwrap();
-                    match p {
-                        Payload::Text(text) => {
-                            info!("Push text to cloud: {} bytes", text.content.len());
-                        }
-                        Payload::Image(image) => {
-                            let size = image.size as f64 / 1024.0 / 1024.0;
-                            info!(
-                                "Push image to cloud: Size: {:.2} Mb, Width: {} px, Height: {} px",
-                                size, image.width, image.height
-                            );
-                        }
-                    }
+                    info!("Push to cloud: {}", p);
+                    cloud.push(p).await.unwrap();
                 } else {
                     tokio::time::sleep(Duration::from_millis(100)).await;
                 }

@@ -5,6 +5,7 @@ use hex;
 use serde::{Deserialize, Serialize};
 use serde_json;
 use sha2::{Digest, Sha256};
+use std::fmt;
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub enum Payload {
@@ -134,5 +135,30 @@ impl Payload {
 
     pub fn to_json(&self) -> String {
         serde_json::to_string(self).unwrap()
+    }
+}
+
+
+impl fmt::Display for Payload {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Payload::Text(text) => write!(
+                f,
+                "文本消息 - 设备: {}, 时间: {}, 内容长度: {}",
+                text.device_id,
+                text.timestamp,
+                text.content.len()
+            ),
+            Payload::Image(image) => write!(
+                f,
+                "图片消息 - 设备: {}, 时间: {}, 尺寸: {}x{}, 格式: {}, 大小: {}",
+                image.device_id,
+                image.timestamp,
+                image.width,
+                image.height,
+                image.format,
+                image.size
+            ),
+        }
     }
 }
