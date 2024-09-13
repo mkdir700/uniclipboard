@@ -267,7 +267,7 @@ impl ClipboardHandler {
                     if let Err(e) = local.write(p.clone()).await {
                         error!("Failed to write to local clipboard: {}", e);
                     } else {
-                        debug!("Write to local success: {}", p);
+                        info!("Write to local success: {}", p);
                         // 写入成功之后，记录 content_hash
                         *last_content_hash.write().unwrap() = Some(content_hash);
                     }
@@ -301,7 +301,7 @@ impl ClipboardHandler {
 
                     if !should_upload {
                         tokio::time::sleep(Duration::from_millis(100)).await;
-                        debug!("Skip upload to cloud: {}", p);
+                        info!("Skip upload to cloud: {}", p);
                         continue;
                     }
                     
@@ -309,7 +309,7 @@ impl ClipboardHandler {
                     if let Err(e) = cloud.push(p.clone()).await {
                         error!("Failed to push to cloud: {}", e);
                     } else {
-                        debug!("Upload to cloud success: {}", p);
+                        info!("Upload to cloud success: {}", p);
                         // 更新成功后，更新 last_content_hash
                         *content_hash.write().unwrap() = Some(new_hash);
                     }
