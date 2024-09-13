@@ -1,4 +1,3 @@
-#[cfg(windows)]
 use super::traits::ClipboardOperations;
 use crate::{image::PlatformImage, message::Payload};
 use anyhow::Result;
@@ -6,17 +5,14 @@ use arboard::Clipboard;
 use clipboard_win::{formats, set_clipboard};
 use std::sync::{Arc, Mutex};
 
-#[cfg(windows)]
 pub struct WinClipboard(Arc<Mutex<Clipboard>>);
 
-#[cfg(windows)]
 impl WinClipboard {
     pub fn new() -> Result<Self> {
         Ok(Self(Arc::new(Mutex::new(Clipboard::new()?))))
     }
 }
 
-#[cfg(windows)]
 impl ClipboardOperations for WinClipboard {
     fn clipboard(&self) -> Arc<Mutex<Clipboard>> {
         self.0.clone()

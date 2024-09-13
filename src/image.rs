@@ -1,5 +1,8 @@
-use image::{DynamicImage, GenericImageView};
+use image::DynamicImage;
+#[cfg(windows)]
 use std::ops::Range;
+#[cfg(windows)]
+use image::GenericImageView;
 
 pub struct PlatformImage {
     pub dynamic_image: DynamicImage,
