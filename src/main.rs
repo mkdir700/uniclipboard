@@ -4,9 +4,11 @@ mod config;
 mod message;
 mod network;
 mod file_metadata;
+mod clipboard_handler;
+mod image;
 
 use crate::cli::parse_args;
-use crate::clipboard::{Clipboard, CloudClipboardHandler, LocalClipboardHandler};
+use crate::clipboard_handler::{ClipboardHandler, CloudClipboardHandler, LocalClipboardHandler};
 use crate::config::{CONFIG, Config};
 use crate::network::WebDAVClient;
 use anyhow::Result;
@@ -52,7 +54,7 @@ async fn main() -> Result<()> {
 
     let cloud_clipboard = CloudClipboardHandler::new(client);
     let local_clipboard = LocalClipboardHandler::new();
-    let clipboard = Clipboard::new(cloud_clipboard, local_clipboard);
+    let clipboard = ClipboardHandler::new(cloud_clipboard, local_clipboard);
     clipboard.watch().await.unwrap();
     Ok(())
 }

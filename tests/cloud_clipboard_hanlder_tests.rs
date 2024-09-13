@@ -207,7 +207,7 @@ async fn test_push_and_pull_image() -> Result<(), Box<dyn std::error::Error>> {
 
     // 3. 从云端 pull 到本地
     let pulled_payload = cloud_handler.pull(Some(Duration::from_secs(5))).await?;
-    local_handler.write(pulled_payload.clone())?;
+    local_handler.write(pulled_payload.clone()).await?;
 
     // 4. 对比两份数据是否一致
     match (original_payload, pulled_payload.clone()) {
@@ -230,56 +230,3 @@ async fn test_push_and_pull_image() -> Result<(), Box<dyn std::error::Error>> {
 
     Ok(())
 }
-
-// #[test]
-// fn test_local_clipboard_text() {
-//     let handler = LocalClipboardHandler::new();
-    
-//     // Write text to clipboard
-//     let text_payload = Payload::new_text(
-//         Bytes::from("test content"),
-//         "test_device".to_string(),
-//         Utc::now(),
-//     );
-//     assert!(handler.write(text_payload.clone()).is_ok());
-
-//     // Read from clipboard
-//     let result = handler.read();
-//     assert!(result.is_ok());
-//     let read_payload = result.unwrap();
-//     assert!(matches!(read_payload, Payload::Text(_)));
-//     if let Payload::Text(text_payload) = read_payload {
-//         assert_eq!(*text_payload.content, Bytes::from("test content"));
-//     }
-// }
-
-// #[test]
-// fn test_local_clipboard_image() {
-//     let handler = LocalClipboardHandler::new();
-    
-//     // Write image to clipboard
-//     let image_data = vec![0u8; 100]; // 模拟图片数据
-//     let image_payload = Payload::new_image(
-//         Bytes::from(image_data.clone()),
-//         "test_device".to_string(),
-//         Utc::now(),
-//         100,
-//         100,
-//         "png".to_string(),
-//         100,
-//     );
-//     assert!(handler.write(image_payload.clone()).is_ok());
-
-//     // Read from clipboard
-//     let result = handler.read();
-//     assert!(result.is_ok());
-//     let read_payload = result.unwrap();
-//     assert!(matches!(read_payload, Payload::Image(_)));
-//     if let Payload::Image(image_payload) = read_payload {
-//         assert_eq!(*image_payload.content, Bytes::from(image_data));
-//         assert_eq!(image_payload.width, 100);
-//         assert_eq!(image_payload.height, 100);
-//         assert_eq!(image_payload.format, "png");
-//         assert_eq!(image_payload.size, 100);
-//     }
-// }

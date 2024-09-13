@@ -1,16 +1,19 @@
-use super::{ClipboardOperations, ArboardClipboard};
+use super::ClipboardOperations;
 use anyhow::Result;
+use std::sync::Arc;
 
+#[cfg(any(target_os = "macos", target_os = "linux"))]
+use super::ArboardClipboard;
 #[cfg(windows)]
 use super::WinClipboard;
 
-pub fn create_clipboard() -> Result<Box<dyn ClipboardOperations>> {
+pub fn create_clipboard() -> Result<Arc<dyn ClipboardOperations>> {
     #[cfg(windows)]
     {
-        Ok(Box::new(WinClipboard::new()?))
+        Ok(Arc::new(WinClipboard::new()?))
     }
-    #[cfg(not(windows))]
+    #[cfg(any(target_os = "macos", target_os = "linux"))]
     {
-        Ok(Box::new(ArboardClipboard::new()?))
+        Ok(Arc::new(ArboardClipboard::new()?))
     }
 }

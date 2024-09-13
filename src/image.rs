@@ -1,32 +1,40 @@
 use image::{DynamicImage, GenericImageView};
 use std::ops::Range;
 
-pub struct PlatformImage(DynamicImage);
+pub struct PlatformImage {
+    pub dynamic_image: DynamicImage,
+    pub width: usize,
+    pub height: usize,
+}
+
+// 显式实现 Send 和 Sync
+unsafe impl Send for PlatformImage {}
+unsafe impl Sync for PlatformImage {}
+
 
 impl PlatformImage {
     pub fn new(img: DynamicImage) -> Self {
-        Self(img)
+        let width = img.width();
+        let height = img.height();
+        Self {
+            dynamic_image: img,
+            width: width as usize,
+            height: height as usize,
+        }
     }
 
     pub fn from_bytes(bytes: &[u8]) -> Self {
         let img = image::load_from_memory(bytes).unwrap();
-        Self(img)
-    }
-
-    pub fn from_dynamic_image(img: DynamicImage) -> Self {
-        Self(img)
+        Self::new(img)
     }
 
     /// 根据平台将图片转换为字节数组
     /// windows：转换为bitmap格式
     /// macos：转换为png格式
     /// linux：转换为png格式
-    #[cfg(not(windows))]
+    #[cfg(any(target_os = "macos", target_os = "linux"))]
     pub fn to_vec(&self) -> Vec<u8> {
-        match std::env::consts::OS {
-            "macos" | "linux" => self.to_png(),
-            _ => panic!("不支持的操作系统"),
-        }
+        self.to_png()
     }
 
     #[cfg(windows)]
@@ -34,15 +42,20 @@ impl PlatformImage {
         self.to_bitmap()
     }
 
+    /// Converts the image to png format
+    /// 
+    /// This method is used on non-windows platforms and may be used
+    /// in cross-platform code or tests even on Windows build.
+    #[cfg_attr(windows, allow(dead_code))]
     pub fn to_png(&self) -> Vec<u8> {
-        let rgba_img = self.0.to_rgba8();
+        let rgba_img = self.dynamic_image.to_rgba8();
         rgba_img.to_vec()
     }
 
     #[cfg(windows)]
     pub fn to_bitmap(&self) -> Vec<u8> {
         //Flipping image, because scan lines are stored bottom to top
-        let img = self.0.flipv();
+        let img = self.dynamic_image.flipv();
 
         //Getting the header
         let mut byte_vec = self.get_header(img.width(), img.height());

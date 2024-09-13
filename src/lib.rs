@@ -4,9 +4,8 @@ pub mod network;
 pub mod cli;
 pub mod config;
 pub mod file_metadata;
-pub mod image;
 pub mod clipboard;
-
+mod image;
 
 pub use clipboard_handler::LocalClipboardHandler;
 pub use message::Payload;

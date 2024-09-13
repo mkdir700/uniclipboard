@@ -1,17 +1,19 @@
+use crate::clipboard::create_clipboard;
 use crate::clipboard::traits::ClipboardOperations;
 use crate::config::CONFIG;
 use crate::{message::Payload, network::WebDAVClient};
 use anyhow::Result;
 use chrono::{DateTime, Utc};
-use log::{info, trace};
+use log::{info, debug};
 use std::sync::RwLock;
 use std::{
     collections::VecDeque,
     error::Error,
-    sync::{Arc, Mutex},
+    sync::Arc,
     time::{Duration, Instant},
 };
 use tokio::task;
+use tokio::sync::Mutex as TokioMutex;
 
 #[derive(Clone)]
 pub struct CloudClipboardHandler {
@@ -24,19 +26,19 @@ pub struct CloudClipboardHandler {
 }
 
 pub struct LocalClipboardHandler {
-    factory: Box<dyn ClipboardOperations>,
+    factory: Arc<dyn ClipboardOperations>,
 }
 
 pub struct ClipboardHandler {
     cloud: Arc<CloudClipboardHandler>,
     local: Arc<LocalClipboardHandler>,
-    cloud_to_local_queue: Arc<Mutex<VecDeque<Payload>>>,
-    local_to_cloud_queue: Arc<Mutex<VecDeque<Payload>>>,
+    cloud_to_local_queue: Arc<TokioMutex<VecDeque<Payload>>>,
+    local_to_cloud_queue: Arc<TokioMutex<VecDeque<Payload>>>,
 }
 
 impl CloudClipboardHandler {
     pub fn new(client: WebDAVClient) -> Self {
-        let base_path = format!("/uniclipboard/");
+        let base_path = format!("/uniclipboard");
         Self {
             client: Arc::new(client),
             base_path,
@@ -93,7 +95,7 @@ impl CloudClipboardHandler {
     /// This function will return an error if:
     /// - There's a failure in communicating with the WebDAV server
     /// - The latest file cannot be retrieved or parsed into a Payload
-    pub async fn pull(&self, timeout: Option<Duration>) -> Result<Payload, Box<dyn Error>> {
+    pub async fn pull(&self, timeout: Option<Duration>) -> Result<Payload> {
         // FIXME: 当前的逻辑，如果是在程序首次启动后，就会从云端拉取最新的
         // 应该给出选项，在程序启动后，是否立即从云端拉取最近的一个内容
         let start_time = Instant::now();
@@ -102,10 +104,7 @@ impl CloudClipboardHandler {
         loop {
             if let Some(timeout) = timeout {
                 if start_time.elapsed() > timeout {
-                    return Err(Box::new(std::io::Error::new(
-                        std::io::ErrorKind::TimedOut,
-                        "Timeout while waiting for clipboard change",
-                    )));
+                    anyhow::bail!("Timeout while waiting for clipboard change");
                 }
             }
 
@@ -147,36 +146,16 @@ impl CloudClipboardHandler {
 
 impl LocalClipboardHandler {
     pub fn new() -> Self {
-        let (op_sender, mut op_receiver) = tokio::sync::mpsc::channel(100);
-
-        tokio::task::spawn(async move {
-            let mut clipboard = arboard::Clipboard::new().expect("Failed to create clipboard");
-            while let Some(operation) = op_receiver.recv().await {
-                match operation {
-                    ClipboardOperations::ReadImage(respond_to) => {
-                        unimplemented!()
-                    }
-                    ClipboardOperations::WriteImage(payload) => {
-                        unimplemented!()
-                    }
-                }
-            }
-        });
-
-        Self { sender: op_sender }
+        let factory = create_clipboard().unwrap();
+        Self { factory }
     }
 
-
-
     pub async fn read(&self) -> Result<Payload> {
-        let (tx, rx) = tokio::sync::oneshot::channel();
-        self.sender.send(ClipboardOperation::Read(tx)).await?;
-        rx.await?
+        self.factory.read()
     }
 
     pub async fn write(&self, payload: Payload) -> Result<()> {
-        self.sender.send(ClipboardOperation::Write(payload)).await?;
-        Ok(())
+        self.factory.write(payload)
     }
 
     pub async fn pull(&self, timeout: Option<Duration>) -> Result<Payload> {
@@ -208,8 +187,8 @@ impl ClipboardHandler {
         Self {
             cloud: Arc::new(cloud_clipboard_handler),
             local: Arc::new(local_clipboard_handler),
-            cloud_to_local_queue: Arc::new(Mutex::new(VecDeque::new())),
-            local_to_cloud_queue: Arc::new(Mutex::new(VecDeque::new())),
+            cloud_to_local_queue: Arc::new(TokioMutex::new(VecDeque::new())),
+            local_to_cloud_queue: Arc::new(TokioMutex::new(VecDeque::new())),
         }
     }
 
@@ -236,8 +215,8 @@ impl ClipboardHandler {
         task::spawn(async move {
             loop {
                 if let Ok(content) = cloud.pull(Some(Duration::from_secs(1))).await {
-                    trace!("Watch new content from cloud: {}", content);
-                    let mut queue = queue.lock().unwrap();
+                    debug!("Watch new content from cloud: {}", content);
+                    let mut queue = queue.lock().await;
                     queue.push_back(content);
                 }
                 tokio::time::sleep(Duration::from_millis(100)).await;
@@ -255,8 +234,8 @@ impl ClipboardHandler {
         task::spawn(async move {
             loop {
                 if let Ok(payload) = local.pull(Some(Duration::from_secs(1))).await {
-                    trace!("Watch new content from local: {}", payload);
-                    let mut queue = queue.lock().unwrap();
+                    debug!("Watch new content from local: {}", payload);
+                    let mut queue = queue.lock().await;
                     queue.push_back(payload);
                 }
                 tokio::time::sleep(Duration::from_millis(100)).await;
@@ -274,7 +253,7 @@ impl ClipboardHandler {
         task::spawn(async move {
             loop {
                 let payload = {
-                    let mut queue = queue.lock().unwrap();
+                    let mut queue = queue.lock().await;
                     queue.pop_front()
                 };
 
@@ -298,7 +277,7 @@ impl ClipboardHandler {
         task::spawn(async move {
             loop {
                 let payload = {
-                    let mut queue = queue.lock().unwrap();
+                    let mut queue = queue.lock().await;
                     queue.pop_front()
                 };
 
