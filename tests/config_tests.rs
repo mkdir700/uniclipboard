@@ -97,7 +97,7 @@ fn test_get_config_path() {
     } else if cfg!(target_os = "macos") {
         temp_dir.path().join("Library").join("Application Support").join("uniclipboard").join("config.toml")
     } else {
-        temp_dir.path().join(".config").join("uniclipboard").join("config.toml")
+        temp_dir.path().join("uniclipboard").join("config.toml")
     };
 
     assert_eq!(config_path, expected_path, "Config path mismatch on {:?}", std::env::consts::OS);
