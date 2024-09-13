@@ -83,7 +83,7 @@ fn test_get_config_path() {
     }
     #[cfg(target_os = "linux")]
     {
-        env::set_var("HOME", temp_dir.path());
+        env::set_var("XDG_CONFIG_HOME", temp_dir.path());
     }
 
     // 清除可能影响测试的环境变量
