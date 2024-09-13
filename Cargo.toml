@@ -8,6 +8,7 @@ lto = true
 
 [features]
 clipboard_tests = []
+network_tests = []
 
 [dependencies]
 # 网络通信
