@@ -1,19 +1,18 @@
+use crate::clipboard::create_clipboard;
+use crate::clipboard::traits::ClipboardOperations;
 use crate::config::CONFIG;
 use crate::{message::Payload, network::WebDAVClient};
-use arboard::Clipboard as ArboardClipboard;
-use bytes::Bytes;
+use anyhow::Result;
 use chrono::{DateTime, Utc};
-use image::{DynamicImage, ImageBuffer, Rgba, ImageFormat};
-use log::{info, trace};
-use std::io::Cursor;
+use log::{debug, error, info};
 use std::sync::RwLock;
 use std::{
     collections::VecDeque,
     error::Error,
-    sync::{Arc, Mutex},
-    thread::sleep,
+    sync::Arc,
     time::{Duration, Instant},
 };
+use tokio::sync::Mutex as TokioMutex;
 use tokio::task;
 
 #[derive(Clone)]
@@ -26,21 +25,21 @@ pub struct CloudClipboardHandler {
     pull_on_start: bool,
 }
 
-#[derive(Clone)]
 pub struct LocalClipboardHandler {
-    ctx: Arc<Mutex<ArboardClipboard>>,
+    factory: Arc<dyn ClipboardOperations>,
 }
 
-pub struct Clipboard {
-    cloud: CloudClipboardHandler,
-    local: LocalClipboardHandler,
-    cloud_to_local_queue: Arc<Mutex<VecDeque<Payload>>>,
-    local_to_cloud_queue: Arc<Mutex<VecDeque<Payload>>>,
+pub struct ClipboardHandler {
+    last_content_hash: Arc<RwLock<Option<String>>>,
+    cloud: Arc<CloudClipboardHandler>,
+    local: Arc<LocalClipboardHandler>,
+    cloud_to_local_queue: Arc<TokioMutex<VecDeque<Payload>>>,
+    local_to_cloud_queue: Arc<TokioMutex<VecDeque<Payload>>>,
 }
 
 impl CloudClipboardHandler {
     pub fn new(client: WebDAVClient) -> Self {
-        let base_path = format!("/uniclipboard/");
+        let base_path = format!("/uniclipboard");
         Self {
             client: Arc::new(client),
             base_path,
@@ -97,7 +96,7 @@ impl CloudClipboardHandler {
     /// This function will return an error if:
     /// - There's a failure in communicating with the WebDAV server
     /// - The latest file cannot be retrieved or parsed into a Payload
-    pub async fn pull(&self, timeout: Option<Duration>) -> Result<Payload, Box<dyn Error>> {
+    pub async fn pull(&self, timeout: Option<Duration>) -> Result<Payload> {
         // FIXME: 当前的逻辑，如果是在程序首次启动后，就会从云端拉取最新的
         // 应该给出选项，在程序启动后，是否立即从云端拉取最近的一个内容
         let start_time = Instant::now();
@@ -106,10 +105,7 @@ impl CloudClipboardHandler {
         loop {
             if let Some(timeout) = timeout {
                 if start_time.elapsed() > timeout {
-                    return Err(Box::new(std::io::Error::new(
-                        std::io::ErrorKind::TimedOut,
-                        "Timeout while waiting for clipboard change",
-                    )));
+                    anyhow::bail!("Timeout while waiting for clipboard change");
                 }
             }
 
@@ -127,11 +123,12 @@ impl CloudClipboardHandler {
                 tokio::time::sleep(std::time::Duration::from_millis(200)).await;
                 continue;
             }
+
             let should_update = {
                 let last_modified = self.last_modified.read().unwrap();
-                match *last_modified {
+                match last_modified.as_ref() {
                     None => true,
-                    Some(last_modified) => modified > last_modified,
+                    Some(last_modified) => modified > *last_modified,
                 }
             };
             if should_update {
@@ -151,152 +148,50 @@ impl CloudClipboardHandler {
 
 impl LocalClipboardHandler {
     pub fn new() -> Self {
-        Self {
-            ctx: Arc::new(Mutex::new(ArboardClipboard::new().unwrap())),
-        }
+        let factory = create_clipboard().unwrap();
+        Self { factory }
     }
 
-    /// Writes content to the local clipboard.
-    ///
-    /// # Arguments
-    ///
-    /// * `content` - A String that will be written to the clipboard.
-    ///
-    /// # Returns
-    ///
-    /// Returns a `Result` which is `Ok(())` if the write operation is successful,
-    /// or an `Error` if the operation fails.
-    ///
-    /// # Errors
-    ///
-    /// This function will return an error if it fails to set the clipboard contents.
-    pub fn write(&self, payload: Payload) -> Result<(), Box<dyn Error>> {
-        // ! 优化 payload 参数，应该使用引用
-        let mut clipboard = self.ctx.lock().unwrap();
-        match payload {
-            Payload::Text(text) => {
-                let content = String::from_utf8(text.content.to_vec())?;
-                clipboard.set_text(content)?;
-            }
-            Payload::Image(image) => {
-                // 从 PNG 数据解码图像
-                let img = image::load_from_memory(&image.content)?;
-
-                // 转换为 RGBA
-                let rgba_img = img.to_rgba8();
-
-                let image_data = arboard::ImageData {
-                    width: image.width,
-                    height: image.height,
-                    bytes: rgba_img.into_raw().into(),
-                };
-                clipboard.set_image(image_data)?;
-            }
-        }
-        Ok(())
+    pub async fn read(&self) -> Result<Payload> {
+        self.factory.read()
     }
 
-    /// Reads content from the local clipboard.
-    ///
-    /// # Returns
-    ///
-    /// Returns a `Result` containing a `String` with the clipboard content if successful,
-    /// or an error if the operation fails.
-    ///
-    /// # Errors
-    ///
-    /// 此函数在无法读取剪贴板内容时将返回错误。
-    pub fn read(&self) -> Result<Payload, Box<dyn Error>> {
-        let mut clipboard = self.ctx.lock().unwrap();
-        if let Ok(text) = clipboard.get_text() {
-            Ok(Payload::new_text(
-                Bytes::from(text),
-                CONFIG.read().unwrap().get_device_id(),
-                Utc::now(),
-            ))
-        } else if let Ok(image) = clipboard.get_image() {
-            let raw_image_bytes = image.bytes.to_vec();
-            let img = ImageBuffer::<Rgba<u8>, _>::from_raw(
-                image.width as u32,
-                image.height as u32,
-                raw_image_bytes.clone(),
-            )
-            .ok_or_else(|| {
-                Box::new(std::io::Error::new(
-                    std::io::ErrorKind::InvalidData,
-                    "无法创建图像缓冲区",
-                ))
-            })?;
-
-            let dynamic_img = DynamicImage::ImageRgba8(img);
-
-            // 压缩为 PNG 格式
-            let mut png_data = Vec::new();
-            dynamic_img.write_to(&mut Cursor::new(&mut png_data), ImageFormat::Png)?;
-            let size = png_data.len() as usize;
-            // 创建 Payload
-            Ok(Payload::new_image(
-                Bytes::from(png_data),
-                CONFIG.read().unwrap().get_device_id(),
-                Utc::now(),
-                image.width,
-                image.height,
-                "png".to_string(),
-                size,
-            ))
-        } else {
-            Err(Box::new(std::io::Error::new(
-                std::io::ErrorKind::Other,
-                "不支持的剪贴板内容",
-            )))
-        }
+    pub async fn write(&self, payload: Payload) -> Result<()> {
+        self.factory.write(payload)
     }
 
-    /// 持续监视本地剪贴板的变化。
-    ///
-    /// This method runs in an infinite loop, periodically reading the contents
-    /// of the local clipboard. When new content is detected, it is added to
-    /// the queue for further processing.
-    ///
-    /// # Errors
-    ///
-    /// This function will return an error if:
-    /// - There's a failure in reading from the local clipboard
-    /// - The queue cannot be locked for updating
-    pub fn pull(&mut self, timeout: Option<Duration>) -> Result<Payload, Box<dyn Error>> {
-        let latest = self.read()?;
-        let start_time = Instant::now();
+    pub async fn pull(&self, timeout: Option<Duration>) -> Result<Payload> {
+        let latest = self.read().await?;
+        let start_time = std::time::Instant::now();
 
         loop {
-            let current = self.read()?;
+            let current = self.read().await?;
             if !current.eq(&latest) {
                 return Ok(current);
             }
 
             if let Some(timeout) = timeout {
                 if start_time.elapsed() > timeout {
-                    return Err(Box::new(std::io::Error::new(
-                        std::io::ErrorKind::TimedOut,
-                        "Timeout while waiting for clipboard change",
-                    )));
+                    anyhow::bail!("Timeout while waiting for clipboard change");
                 }
             }
 
-            sleep(Duration::from_millis(200));
+            tokio::time::sleep(Duration::from_millis(200)).await;
         }
     }
 }
 
-impl Clipboard {
+impl ClipboardHandler {
     pub fn new(
         cloud_clipboard_handler: CloudClipboardHandler,
         local_clipboard_handler: LocalClipboardHandler,
     ) -> Self {
         Self {
-            cloud: cloud_clipboard_handler,
-            local: local_clipboard_handler,
-            cloud_to_local_queue: Arc::new(Mutex::new(VecDeque::new())),
-            local_to_cloud_queue: Arc::new(Mutex::new(VecDeque::new())),
+            last_content_hash: Arc::new(RwLock::new(None)),
+            cloud: Arc::new(cloud_clipboard_handler),
+            local: Arc::new(local_clipboard_handler),
+            cloud_to_local_queue: Arc::new(TokioMutex::new(VecDeque::new())),
+            local_to_cloud_queue: Arc::new(TokioMutex::new(VecDeque::new())),
         }
     }
 
@@ -323,8 +218,8 @@ impl Clipboard {
         task::spawn(async move {
             loop {
                 if let Ok(content) = cloud.pull(Some(Duration::from_secs(1))).await {
-                    trace!("Watch new content from cloud: {}", content);
-                    let mut queue = queue.lock().unwrap();
+                    debug!("Watch new content from cloud: {}", content);
+                    let mut queue = queue.lock().await;
                     queue.push_back(content);
                 }
                 tokio::time::sleep(Duration::from_millis(100)).await;
@@ -336,14 +231,14 @@ impl Clipboard {
     }
 
     async fn watch_local_clipboard(&self) -> Result<(), Box<dyn Error>> {
-        let mut local = self.local.clone();
+        let local = Arc::clone(&self.local);
         let queue = Arc::clone(&self.local_to_cloud_queue);
 
         task::spawn(async move {
             loop {
-                if let Ok(payload) = local.pull(Some(Duration::from_secs(1))) {
-                    trace!("Watch new content from local: {}", payload);
-                    let mut queue = queue.lock().unwrap();
+                if let Ok(payload) = local.pull(Some(Duration::from_secs(1))).await {
+                    debug!("Watch new content from local: {}", payload);
+                    let mut queue = queue.lock().await;
                     queue.push_back(payload);
                 }
                 tokio::time::sleep(Duration::from_millis(100)).await;
@@ -355,22 +250,29 @@ impl Clipboard {
     }
 
     async fn cloud_to_local_task(&self) -> Result<(), Box<dyn Error>> {
-        let local = self.local.clone();
+        let local = Arc::clone(&self.local);
         let queue = Arc::clone(&self.cloud_to_local_queue);
+        let last_content_hash: Arc<RwLock<Option<String>>> = Arc::clone(&self.last_content_hash);
 
         task::spawn(async move {
             loop {
                 let payload = {
-                    let mut queue = queue.lock().unwrap();
+                    let mut queue = queue.lock().await;
                     queue.pop_front()
                 };
 
                 if let Some(p) = payload {
                     info!("Push to local: {}", p);
-                    local.write(p).unwrap();
-                } else {
-                    tokio::time::sleep(Duration::from_millis(100)).await;
-                }
+                    let content_hash = p.hash();
+                    if let Err(e) = local.write(p.clone()).await {
+                        error!("Failed to write to local clipboard: {}", e);
+                    } else {
+                        info!("Write to local success: {}", p);
+                        // 写入成功之后，记录 content_hash
+                        *last_content_hash.write().unwrap() = Some(content_hash);
+                    }
+                } 
+                tokio::time::sleep(Duration::from_millis(100)).await;
             }
         })
         .await?;
@@ -381,20 +283,38 @@ impl Clipboard {
     async fn local_to_cloud_task(&self) -> Result<(), Box<dyn Error>> {
         let cloud = self.cloud.clone();
         let queue = Arc::clone(&self.local_to_cloud_queue);
+        let content_hash = Arc::clone(&self.last_content_hash);
 
         task::spawn(async move {
             loop {
                 let payload = {
-                    let mut queue = queue.lock().unwrap();
+                    let mut queue = queue.lock().await;
                     queue.pop_front()
                 };
 
                 if let Some(p) = payload {
+                    let new_hash = p.hash();
+                    let should_upload = {
+                        let last_content_hash = content_hash.read().unwrap();
+                        last_content_hash.as_ref() != Some(&new_hash)
+                    };
+
+                    if !should_upload {
+                        tokio::time::sleep(Duration::from_millis(100)).await;
+                        info!("Skip upload to cloud: {}", p);
+                        continue;
+                    }
+                    
                     info!("Push to cloud: {}", p);
-                    cloud.push(p).await.unwrap();
-                } else {
-                    tokio::time::sleep(Duration::from_millis(100)).await;
-                }
+                    if let Err(e) = cloud.push(p.clone()).await {
+                        error!("Failed to push to cloud: {}", e);
+                    } else {
+                        info!("Upload to cloud success: {}", p);
+                        // 更新成功后，更新 last_content_hash
+                        *content_hash.write().unwrap() = Some(new_hash);
+                    }
+                } 
+                tokio::time::sleep(Duration::from_millis(100)).await;
             }
         })
         .await?;

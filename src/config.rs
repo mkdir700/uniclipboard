@@ -1,14 +1,13 @@
+use anyhow::{Context, Result};
+use once_cell::sync::Lazy;
 use serde::{Deserialize, Serialize};
+use std::env;
 use std::fs;
 use std::path::PathBuf;
-use anyhow::{Result, Context};
-use std::env;
-use once_cell::sync::Lazy;
 use std::sync::RwLock;
+use uuid::Uuid;
 
-pub static CONFIG: Lazy<RwLock<Config>> = Lazy::new(|| {
-    RwLock::new(Config::default())
-});
+pub static CONFIG: Lazy<RwLock<Config>> = Lazy::new(|| RwLock::new(Config::default()));
 
 #[derive(Deserialize, Serialize, Debug, Clone)]
 pub struct Config {
@@ -16,17 +15,23 @@ pub struct Config {
     pub webdav_url: String,
     pub username: String,
     pub password: String,
-    pub push_interval: Option<u64>,  // ms
-    pub pull_interval: Option<u64>,  // ms
-    pub sync_interval: Option<u64>,  // ms
+    pub push_interval: Option<u64>, // ms
+    pub pull_interval: Option<u64>, // ms
+    pub sync_interval: Option<u64>, // ms
     pub enable_push: Option<bool>,
     pub enable_pull: Option<bool>,
+}
+
+fn generate_device_id() -> String {
+    // 随机生成 6 位字母
+    let device_id = Uuid::new_v4().to_string();
+    device_id.chars().take(6).collect()
 }
 
 impl Config {
     pub fn default() -> Self {
         Self {
-            device_id: String::new(),
+            device_id: generate_device_id(),
             webdav_url: String::new(),
             username: String::new(),
             password: String::new(),
@@ -40,12 +45,14 @@ impl Config {
 
     pub fn load() -> Result<Self> {
         let config_path = get_config_path()?;
-        let config_str = fs::read_to_string(&config_path)
-            .with_context(|| format!("Could not read config file: {:?}", config_path))?;
-        let config: Config = toml::from_str(&config_str)
-            .with_context(|| "Could not parse config file")?;
-        *CONFIG.write().unwrap() = config.clone();
-        Ok(config)
+        if let Some(config_str) = fs::read_to_string(&config_path).ok() {
+            let config: Config =
+                toml::from_str(&config_str).with_context(|| "Could not parse config file")?;
+            *CONFIG.write().unwrap() = config.clone();
+            Ok(config)
+        } else {
+            Ok(Config::default())
+        }
     }
 
     pub fn save(&self) -> Result<()> {

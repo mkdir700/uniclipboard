@@ -24,6 +24,13 @@ pub struct TextPayload {
     pub timestamp: DateTime<Utc>,
 }
 
+impl TextPayload {
+    #[allow(dead_code)]
+    pub fn text(&self) -> &str {
+        std::str::from_utf8(self.content.as_ref()).unwrap()
+    }
+}
+
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct ImagePayload {
     #[serde(
