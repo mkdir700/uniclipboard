@@ -30,6 +30,7 @@ pub struct LocalClipboardHandler {
 }
 
 pub struct ClipboardHandler {
+    last_content_hash: Arc<RwLock<Option<String>>>,
     cloud: Arc<CloudClipboardHandler>,
     local: Arc<LocalClipboardHandler>,
     cloud_to_local_queue: Arc<TokioMutex<VecDeque<Payload>>>,
@@ -122,11 +123,12 @@ impl CloudClipboardHandler {
                 tokio::time::sleep(std::time::Duration::from_millis(200)).await;
                 continue;
             }
+
             let should_update = {
                 let last_modified = self.last_modified.read().unwrap();
-                match *last_modified {
+                match last_modified.as_ref() {
                     None => true,
-                    Some(last_modified) => modified > last_modified,
+                    Some(last_modified) => modified > *last_modified,
                 }
             };
             if should_update {
@@ -185,6 +187,7 @@ impl ClipboardHandler {
         local_clipboard_handler: LocalClipboardHandler,
     ) -> Self {
         Self {
+            last_content_hash: Arc::new(RwLock::new(None)),
             cloud: Arc::new(cloud_clipboard_handler),
             local: Arc::new(local_clipboard_handler),
             cloud_to_local_queue: Arc::new(TokioMutex::new(VecDeque::new())),
@@ -249,6 +252,7 @@ impl ClipboardHandler {
     async fn cloud_to_local_task(&self) -> Result<(), Box<dyn Error>> {
         let local = Arc::clone(&self.local);
         let queue = Arc::clone(&self.cloud_to_local_queue);
+        let last_content_hash: Arc<RwLock<Option<String>>> = Arc::clone(&self.last_content_hash);
 
         task::spawn(async move {
             loop {
@@ -259,12 +263,16 @@ impl ClipboardHandler {
 
                 if let Some(p) = payload {
                     info!("Push to local: {}", p);
-                    if let Err(e) = local.write(p).await {
+                    let content_hash = p.hash();
+                    if let Err(e) = local.write(p.clone()).await {
                         error!("Failed to write to local clipboard: {}", e);
+                    } else {
+                        debug!("Write to local success: {}", p);
+                        // 写入成功之后，记录 content_hash
+                        *last_content_hash.write().unwrap() = Some(content_hash);
                     }
-                } else {
-                    tokio::time::sleep(Duration::from_millis(100)).await;
-                }
+                } 
+                tokio::time::sleep(Duration::from_millis(100)).await;
             }
         })
         .await?;
@@ -275,6 +283,7 @@ impl ClipboardHandler {
     async fn local_to_cloud_task(&self) -> Result<(), Box<dyn Error>> {
         let cloud = self.cloud.clone();
         let queue = Arc::clone(&self.local_to_cloud_queue);
+        let content_hash = Arc::clone(&self.last_content_hash);
 
         task::spawn(async move {
             loop {
@@ -284,13 +293,28 @@ impl ClipboardHandler {
                 };
 
                 if let Some(p) = payload {
-                    info!("Push to cloud: {}", p);
-                    if let Err(e) = cloud.push(p).await {
-                        error!("Failed to push to cloud: {}", e);
+                    let new_hash = p.hash();
+                    let should_upload = {
+                        let last_content_hash = content_hash.read().unwrap();
+                        last_content_hash.as_ref() != Some(&new_hash)
+                    };
+
+                    if !should_upload {
+                        tokio::time::sleep(Duration::from_millis(100)).await;
+                        debug!("Skip upload to cloud: {}", p);
+                        continue;
                     }
-                } else {
-                    tokio::time::sleep(Duration::from_millis(100)).await;
-                }
+                    
+                    info!("Push to cloud: {}", p);
+                    if let Err(e) = cloud.push(p.clone()).await {
+                        error!("Failed to push to cloud: {}", e);
+                    } else {
+                        debug!("Upload to cloud success: {}", p);
+                        // 更新成功后，更新 last_content_hash
+                        *content_hash.write().unwrap() = Some(new_hash);
+                    }
+                } 
+                tokio::time::sleep(Duration::from_millis(100)).await;
             }
         })
         .await?;

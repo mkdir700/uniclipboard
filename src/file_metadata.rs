@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FileMetadata {
-    pub name: String,
+    pub name: String, // {device_id}_{content_hash}.json
     pub dir: String,
     pub size: u64,
     pub last_modified: DateTime<Utc>,
@@ -44,6 +44,15 @@ impl FileMetadata {
     #[allow(dead_code)]
     pub fn is_newer_than(&self, other: &Self) -> bool {
         self.last_modified > other.last_modified
+    }
+
+    pub fn get_content_hash(&self) -> Option<String> {
+        let name_parts: Vec<&str> = self.name.split('_').collect();
+        if name_parts.len() >= 2 {
+            Some(name_parts[1].to_string())
+        } else {
+            None
+        }
     }
 
     pub fn get_prefix(url: &str) -> Option<String> {
