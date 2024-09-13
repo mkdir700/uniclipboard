@@ -18,6 +18,11 @@ impl WebDAVClient {
         Ok(Self { client })
     }
 
+    /// 检查是否连接到 WebDAV 服务器
+    pub async fn is_connected(&self) -> bool {
+        self.client.list("/", Depth::Number(0)).await.is_ok()
+    }
+
     /// Initializes the share directory on the WebDAV server.
     ///
     /// This method attempts to create a new directory at the specified base path

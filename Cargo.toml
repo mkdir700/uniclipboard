@@ -24,6 +24,7 @@ env_logger = "0.10"
 
 # 命令行参数解析
 clap = { version = "4.3", features = ["derive"] }
+dialoguer = "0.10.4"
 
 # WebDAV 客户端
 reqwest_dav = "0.1.13"
