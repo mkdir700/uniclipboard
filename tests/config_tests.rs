@@ -2,8 +2,10 @@ use uniclipboard::config::{Config, get_config_path, CONFIG};
 use std::fs;
 use tempfile::tempdir;
 use std::env;
+use serial_test::serial;
 
 #[test]
+#[serial]
 fn test_load_config() {
     let temp_dir = tempdir().unwrap();
     let config_dir = temp_dir.path().join(".config").join("uniclipboard");
@@ -31,6 +33,7 @@ fn test_load_config() {
 }
 
 #[test]
+#[serial]
 fn test_save_config() {
     let temp_dir = tempdir().unwrap();
     let config_dir = temp_dir.path().join(".config").join("uniclipboard");
@@ -68,11 +71,34 @@ fn test_save_config() {
 #[test]
 fn test_get_config_path() {
     let temp_dir = tempdir().unwrap();
-    env::set_var("HOME", temp_dir.path());
+    
+    // 根据不同的操作系统设置适当的环境变量
+    #[cfg(target_os = "windows")]
+    {
+        env::set_var("USERPROFILE", temp_dir.path());
+    }
+    #[cfg(target_os = "macos")]
+    {
+        env::set_var("HOME", temp_dir.path());
+    }
+    #[cfg(target_os = "linux")]
+    {
+        env::set_var("HOME", temp_dir.path());
+    }
+
+    // 清除可能影响测试的环境变量
+    env::remove_var("UNICLIPBOARD_CONFIG_PATH");
 
     let config_path = get_config_path().unwrap();
-    assert_eq!(
-        config_path,
+    
+    // 构建预期的配置路径
+    let expected_path = if cfg!(target_os = "windows") {
+        temp_dir.path().join("AppData").join("Roaming").join("uniclipboard").join("config.toml")
+    } else if cfg!(target_os = "macos") {
+        temp_dir.path().join("Library").join("Application Support").join("uniclipboard").join("config.toml")
+    } else {
         temp_dir.path().join(".config").join("uniclipboard").join("config.toml")
-    );
+    };
+
+    assert_eq!(config_path, expected_path, "Config path mismatch on {:?}", std::env::consts::OS);
 }
