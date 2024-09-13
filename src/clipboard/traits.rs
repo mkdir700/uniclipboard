@@ -1,26 +1,31 @@
-use std::sync::{Arc, Mutex};
+use crate::{config::CONFIG, image::PlatformImage, message::Payload};
 use anyhow::Result;
-use image::DynamicImage;
-use crate::{message::Payload, image::PlatformImage, config::CONFIG};
 use arboard::Clipboard;
 use bytes::Bytes;
 use chrono::Utc;
+use image::DynamicImage;
 use image::{ImageBuffer, ImageFormat, Rgba};
 use std::io::Cursor;
+use std::sync::{Arc, Mutex};
 
 pub trait ClipboardOperations: Send + Sync {
     fn clipboard(&self) -> Arc<Mutex<Clipboard>>;
 
     fn read_text(&self) -> Result<String> {
         let clipboard = self.clipboard();
-        let mut guard = clipboard.lock().unwrap();
-        guard.get_text()
+        let mut guard = clipboard
+            .lock()
+            .map_err(|e| anyhow::anyhow!("Failed to lock clipboard: {}", e))?;
+        guard
+            .get_text()
             .map_err(|e| anyhow::anyhow!("Failed to read text: {}", e))
     }
 
     fn write_text(&self, text: &str) -> Result<()> {
         let clipboard = self.clipboard();
-        let mut guard = clipboard.lock().unwrap();
+        let mut guard = clipboard
+            .lock()
+            .map_err(|e| anyhow::anyhow!("Failed to lock clipboard: {}", e))?;
         guard
             .set_text(text)
             .map_err(|e| anyhow::anyhow!("Failed to write text: {}", e))
@@ -29,7 +34,9 @@ pub trait ClipboardOperations: Send + Sync {
     fn read_image(&self) -> Result<DynamicImage> {
         let clipboard = self.clipboard();
         let mut guard = clipboard.lock().unwrap();
-        let image = guard.get_image().unwrap();
+        let image = guard
+            .get_image()
+            .map_err(|e| anyhow::anyhow!("Failed to read image: {}", e))?;
         let raw_image_bytes = image.bytes.to_vec();
         let img = ImageBuffer::<Rgba<u8>, _>::from_raw(
             image.width as u32,
@@ -42,7 +49,9 @@ pub trait ClipboardOperations: Send + Sync {
 
     fn write_image(&self, image: &PlatformImage) -> Result<()> {
         let clipboard = self.clipboard();
-        let mut guard = clipboard.lock().unwrap();
+        let mut guard = clipboard
+            .lock()
+            .map_err(|e| anyhow::anyhow!("Failed to lock clipboard: {}", e))?;
         guard.set_image(arboard::ImageData {
             width: image.width,
             height: image.height,

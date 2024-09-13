@@ -4,7 +4,7 @@ use crate::config::CONFIG;
 use crate::{message::Payload, network::WebDAVClient};
 use anyhow::Result;
 use chrono::{DateTime, Utc};
-use log::{info, debug};
+use log::{debug, error, info};
 use std::sync::RwLock;
 use std::{
     collections::VecDeque,
@@ -12,8 +12,8 @@ use std::{
     sync::Arc,
     time::{Duration, Instant},
 };
-use tokio::task;
 use tokio::sync::Mutex as TokioMutex;
+use tokio::task;
 
 #[derive(Clone)]
 pub struct CloudClipboardHandler {
@@ -259,7 +259,9 @@ impl ClipboardHandler {
 
                 if let Some(p) = payload {
                     info!("Push to local: {}", p);
-                    local.write(p).await.unwrap();
+                    if let Err(e) = local.write(p).await {
+                        error!("Failed to write to local clipboard: {}", e);
+                    }
                 } else {
                     tokio::time::sleep(Duration::from_millis(100)).await;
                 }
@@ -283,7 +285,9 @@ impl ClipboardHandler {
 
                 if let Some(p) = payload {
                     info!("Push to cloud: {}", p);
-                    cloud.push(p).await.unwrap();
+                    if let Err(e) = cloud.push(p).await {
+                        error!("Failed to push to cloud: {}", e);
+                    }
                 } else {
                     tokio::time::sleep(Duration::from_millis(100)).await;
                 }

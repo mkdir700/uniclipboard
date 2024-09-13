@@ -20,8 +20,8 @@ impl ClipboardOperations for WinClipboard {
 
     fn write_image(&self, image: &PlatformImage) -> Result<()> {
         let image_data = image.to_vec();
-        set_clipboard(formats::Bitmap, &image_data).unwrap();
-        Ok(())
+        set_clipboard(formats::Bitmap, &image_data)
+            .map_err(|e| anyhow::anyhow!("Failed to write image: {}", e))
     }
 
     fn write(&self, payload: Payload) -> Result<()> {
