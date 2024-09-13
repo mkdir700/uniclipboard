@@ -1,6 +1,12 @@
 run:
 	cargo run
 
+test:
+	cargo test --features clipboard_tests
+
+ci:
+	cargo test --no-default-features
+
 build-all:
 	make build-linux
 	make build-windows
