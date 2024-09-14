@@ -1,6 +1,12 @@
 run:
 	cargo run
 
+test:
+	cargo test --features clipboard_tests
+
+ci:
+	cargo test --features vendored_openssl
+
 build-all:
 	make build-linux
 	make build-windows

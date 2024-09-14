@@ -1,7 +1,7 @@
 use bytes::Bytes;
 use chrono::Utc;
 use serde_json;
-use uniclipboard::message::{Payload, TextPayload, ImagePayload};
+use uniclipboard::Payload;
 
 #[test]
 fn test_payload_new_text() {
@@ -110,11 +110,15 @@ fn test_text_payload_to_json() {
     );
 
     let json_string = payload.to_json();
-    let deserialized: TextPayload = serde_json::from_str(&json_string).unwrap();
+    let deserialized: Payload = serde_json::from_str(&json_string).unwrap();
 
-    assert_eq!(deserialized.content, content);
-    assert_eq!(deserialized.device_id, device_id);
-    assert_eq!(deserialized.timestamp, timestamp);
+    if let Payload::Text(text_payload) = deserialized {
+        assert_eq!(text_payload.content, content);
+        assert_eq!(text_payload.device_id, device_id);
+        assert_eq!(text_payload.timestamp, timestamp);
+    } else {
+        panic!("Expected TextPayload");
+    }
 }
 
 #[test]
@@ -138,15 +142,19 @@ fn test_image_payload_to_json() {
     );
 
     let json_string = payload.to_json();
-    let deserialized: ImagePayload = serde_json::from_str(&json_string).unwrap();
+    let deserialized: Payload = serde_json::from_str(&json_string).unwrap();
 
-    assert_eq!(deserialized.content, content);
-    assert_eq!(deserialized.device_id, device_id);
-    assert_eq!(deserialized.timestamp, timestamp);
-    assert_eq!(deserialized.width, width);
-    assert_eq!(deserialized.height, height);
-    assert_eq!(deserialized.format, format);
-    assert_eq!(deserialized.size, size);
+    if let Payload::Image(image_payload) = deserialized {
+        assert_eq!(image_payload.content, content);
+        assert_eq!(image_payload.device_id, device_id);
+        assert_eq!(image_payload.timestamp, timestamp);
+        assert_eq!(image_payload.width, width);
+        assert_eq!(image_payload.height, height);
+        assert_eq!(image_payload.format, format);
+        assert_eq!(image_payload.size, size);
+    } else {
+        panic!("Expected ImagePayload");
+    }
 }
 
 #[test]

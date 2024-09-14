@@ -1,10 +1,11 @@
+name: Release
+
 on:
-  # Indicates I want to run this workflow on all branches, PR, and tags
   push:
-    branches: ["**"]
+    # branches: ["**"]
     tags: ["*"]
   pull_request:
-    branches: ["master"]
+    branches: ["master", "dev"]
 
 env:
   # Define the rust version to use

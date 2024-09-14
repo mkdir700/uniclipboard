@@ -1,21 +1,17 @@
 use bytes::Bytes;
 use chrono::Utc;
 use image::ImageReader;
-use lazy_static::lazy_static;
+use serial_test::serial;
 use std::fs;
 use std::io::Write;
-use std::sync::Mutex;
 use std::{fs::File, path::PathBuf};
 use uniclipboard::{LocalClipboardHandler, Payload};
+use arboard::Clipboard;
 
-lazy_static! {
-    static ref CLIPBOARD_MUTEX: Mutex<()> = Mutex::new(());
-}
-
-#[tokio::test(flavor = "multi_thread")]
-#[ignore = "该测试用例仅在本地测试环境下有效，在 CI/CD 环境下会报错，因为无法访问本地剪贴板"]
+#[tokio::test]
+#[cfg_attr(not(feature = "clipboard_tests"), ignore)]
+#[serial]
 async fn test_read_image_from_local_clipboard() {
-    let _lock = CLIPBOARD_MUTEX.lock().unwrap();
     let handler = LocalClipboardHandler::new();
 
     let payload = handler.read().await.unwrap();
@@ -29,7 +25,8 @@ async fn test_read_image_from_local_clipboard() {
 }
 
 #[tokio::test]
-#[ignore = "该测试用例仅在本地测试环境下有效，在 CI/CD 环境下会报错，因为无法访问本地剪贴板"]
+#[cfg_attr(not(feature = "clipboard_tests"), ignore)]
+#[serial]
 async fn test_write_image_to_local_clipboard() -> Result<(), Box<dyn std::error::Error>> {
     // 1. 读取测试图片
     let image_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -57,9 +54,13 @@ async fn test_write_image_to_local_clipboard() -> Result<(), Box<dyn std::error:
 }
 
 #[tokio::test]
-#[ignore = "该测试用例仅在本地测试环境下有效，在 CI/CD 环境下会报错，因为无法访问本地剪贴板"]
+#[cfg_attr(not(feature = "clipboard_tests"), ignore)]
+#[serial]
 async fn test_read_write_clipboard_text() {
     let test_text = "Hello, world!";
+    let mut clipboard = Clipboard::new().unwrap();
+    clipboard.set_text("random text").unwrap();
+
     let local_handler = LocalClipboardHandler::new();
     let payload = local_handler.read().await.unwrap();
     if let Payload::Text(text_payload) = payload {
@@ -83,7 +84,8 @@ async fn test_read_write_clipboard_text() {
 }
 
 #[tokio::test]
-#[ignore = "该测试用例仅在本地测试环境下有效，在 CI/CD 环境下会报错，因为无法访问本地剪贴板"]
+#[cfg_attr(not(feature = "clipboard_tests"), ignore)]
+#[serial]
 async fn test_read_write_clipboard_image() -> Result<(), Box<dyn std::error::Error>> {
     // 1. 读取测试图片
     let image_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))

@@ -19,6 +19,7 @@ async fn create_webdav_client() -> Result<WebDAVClient> {
 }
 
 #[tokio::test]
+#[cfg_attr(not(feature = "network_tests"), ignore)]
 async fn test_webdav_client_upload_and_download_text() -> Result<()> {
     let client = create_webdav_client().await?;
 
@@ -50,6 +51,7 @@ async fn test_webdav_client_upload_and_download_text() -> Result<()> {
 }
 
 #[tokio::test]
+#[cfg_attr(not(feature = "network_tests"), ignore)]
 async fn test_webdav_client_upload_and_download_image() -> Result<()> {
     let client = create_webdav_client().await?;
 
@@ -89,6 +91,7 @@ async fn test_webdav_client_upload_and_download_image() -> Result<()> {
 }
 
 #[tokio::test]
+#[cfg_attr(not(feature = "network_tests"), ignore)]
 async fn test_webdav_client_get_latest_added_file() -> Result<()> {
     let client = create_webdav_client().await?;
 
