@@ -5,7 +5,7 @@ test:
 	cargo test --features clipboard_tests
 
 ci:
-	cargo test --no-default-features
+	cargo test --features vendored_openssl
 
 build-all:
 	make build-linux
