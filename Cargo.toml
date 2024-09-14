@@ -9,6 +9,7 @@ lto = true
 [features]
 clipboard_tests = []
 network_tests = []
+vendored_openssl = ["openssl-sys/vendored"]
 
 [dependencies]
 # 网络通信
@@ -44,7 +45,7 @@ toml = "0.8.19"
 once_cell = "1.19.0"
 arboard = "3.4.0"
 image = "0.25.2"
-openssl-sys = { version = "0.9", features = ["vendored"] }
+openssl-sys = "0.9"
 
 [target.'cfg(windows)'.dependencies]
 clipboard-win = { version = "5.4.0" }
