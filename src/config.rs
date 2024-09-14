@@ -82,7 +82,7 @@ impl Config {
     }
 }
 
-pub fn get_config_path() -> anyhow::Result<PathBuf> {
+pub fn get_config_path() -> Result<PathBuf> {
     if let Ok(path) = env::var("UNICLIPBOARD_CONFIG_PATH") {
         return Ok(PathBuf::from(path));
     }
