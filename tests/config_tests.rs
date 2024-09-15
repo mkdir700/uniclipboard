@@ -44,17 +44,11 @@ fn test_save_config() {
     env::set_var("HOME", temp_dir.path());
     env::set_var("UNICLIPBOARD_CONFIG_PATH", config_path.to_str().unwrap());
 
-    let config = Config {
-        device_id: "save_test_device".to_string(),
-        webdav_url: "https://save.example.com/webdav".to_string(),
-        username: "save_testuser".to_string(),
-        password: "save_testpass".to_string(),
-        push_interval: Some(500),
-        pull_interval: Some(500),
-        sync_interval: Some(500),
-        enable_push: Some(true),
-        enable_pull: Some(true),
-    };
+    let mut config = Config::default();
+    config.device_id = "save_test_device".to_string();
+    config.webdav_url = "https://save.example.com/webdav".to_string();
+    config.username = "save_testuser".to_string();
+    config.password = "save_testpass".to_string();
 
     config.save().unwrap();
 
