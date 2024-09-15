@@ -33,7 +33,7 @@ impl KeyMouseMonitor {
     }
 
     /// 是否休眠
-    /// 
+    ///
     /// 如果上次活动时间与当前时间的时间差大于休眠超时时间，则返回 true，否则返回 false。
     pub async fn is_sleep(&self) -> bool {
         let last_activity = self.get_last_activity().await;
@@ -42,7 +42,7 @@ impl KeyMouseMonitor {
     }
 
     /// 开始监控
-    /// 
+    ///
     /// 如果已经正在监控，则直接返回。
     /// 否则，将 is_running 设置为 true，并启动一个异步任务来监控键鼠活动。
     /// 在监控过程中，会不断检查键鼠活动是否发生变化，如果发生变化，则更新上次活动时间。
@@ -83,16 +83,27 @@ impl KeyMouseMonitor {
     }
 
     /// 停止监控
-    /// 
+    ///
     /// 将 is_running 设置为 false，停止监控。
     #[allow(dead_code)]
     pub async fn stop(&self) {
         let mut is_running = self.is_running.lock().await;
         *is_running = false;
     }
+
+    /// 设置休眠状态, 仅用于测试
+    ///
+    /// 如果休眠状态为 true，则将 is_running 设置为 false，停止监控。
+    /// 如果休眠状态为 false，则将 is_running 设置为 true，开始监控。
+    #[cfg(feature = "testing")]
+    #[allow(dead_code)]
+    pub async fn set_sleep(&self, value: bool) {
+        let mut is_running = self.is_running.lock().await;
+        *is_running = value;
+    }
 }
 
-
+#[cfg(test)]
 #[tokio::test]
 async fn test_new_monitor() {
     let timeout = Duration::from_secs(10);

@@ -11,6 +11,7 @@ clipboard_tests = []
 network_tests = []
 vendored_openssl = ["openssl-sys/vendored"]
 hardware_tests = []
+testing = []
 
 [dependencies]
 # 网络通信
