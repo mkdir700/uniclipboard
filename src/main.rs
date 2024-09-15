@@ -4,13 +4,14 @@ mod clipboard_handler;
 mod config;
 mod file_metadata;
 mod image;
+mod key_mouse_monitor;
 mod message;
 mod network;
-
+mod uni_clipboard;
 use crate::cli::{interactive_input, parse_args};
-use crate::clipboard_handler::{ClipboardHandler, CloudClipboardHandler, LocalClipboardHandler};
 use crate::config::Config;
 use crate::network::WebDAVClient;
+use crate::uni_clipboard::UniClipboard;
 use anyhow::Result;
 use env_logger::Env;
 use log::{error, info};
@@ -62,9 +63,10 @@ async fn main() -> Result<()> {
     config.password = password;
     config.save()?;
 
-    let cloud_clipboard = CloudClipboardHandler::new(client);
-    let local_clipboard = LocalClipboardHandler::new();
-    let clipboard = ClipboardHandler::new(cloud_clipboard, local_clipboard);
-    clipboard.watch().await.unwrap();
+    let app = UniClipboard::new(client);
+    match app.start().await {
+        Ok(_) => info!("UniClipboard started successfully"),
+        Err(e) => error!("Failed to start UniClipboard: {}", e),
+    }
     Ok(())
 }
