@@ -1,22 +1,27 @@
-use device_query::{DeviceQuery, DeviceState};
+use device_query::{DeviceQuery, DeviceState, Keycode, MouseState};
 use std::sync::Arc;
-use tokio::sync::Mutex;
+use tokio::sync::{mpsc, Mutex};
 use tokio::time::{sleep, Duration, Instant};
 
 pub struct KeyMouseMonitor {
     last_activity: Arc<Mutex<Instant>>,
     sleep_timeout: Duration,
-    device_state: Arc<Mutex<DeviceState>>,
+    device_state: DeviceState,
     pub is_running: Arc<Mutex<bool>>,
+    state_sender: mpsc::Sender<(MouseState, Vec<Keycode>)>,
+    state_receiver: Arc<Mutex<mpsc::Receiver<(MouseState, Vec<Keycode>)>>>,
 }
 
 impl KeyMouseMonitor {
     pub fn new(sleep_timeout: Duration) -> Self {
+        let (state_sender, state_receiver) = mpsc::channel(100);
         Self {
             last_activity: Arc::new(Mutex::new(Instant::now())),
             sleep_timeout,
-            device_state: Arc::new(Mutex::new(DeviceState::new())),
+            device_state: DeviceState::new(),
             is_running: Arc::new(Mutex::new(false)),
+            state_sender,
+            state_receiver: Arc::new(Mutex::new(state_receiver)),
         }
     }
 
@@ -55,29 +60,41 @@ impl KeyMouseMonitor {
             return;
         }
         *is_running = true;
-        drop(is_running); // 提前释放锁
+        drop(is_running);
 
         let is_running = self.is_running.clone();
+        let is_running_clone = is_running.clone();
         let last_activity = self.last_activity.clone();
-        let device_state = self.device_state.clone();
+        let state_receiver = self.state_receiver.clone();
+        let state_sender = self.state_sender.clone();
+
+        // 启动一个线程来获取设备状态
+        std::thread::spawn(move || {
+            let device_state = DeviceState::new();
+            while is_running.blocking_lock().clone() {
+                let mouse = device_state.get_mouse();
+                let keys = device_state.get_keys();
+                let _ = state_sender.blocking_send((mouse, keys));
+                std::thread::sleep(Duration::from_millis(10));
+            }
+        });
 
         tokio::spawn(async move {
-            let mut last_mouse = device_state.lock().await.get_mouse();
-            let mut last_keys = device_state.lock().await.get_keys();
+            let mut last_mouse = MouseState::default();
+            let mut last_keys = Vec::new();
 
-            while *is_running.lock().await {
-                let current_mouse = device_state.lock().await.get_mouse();
-                let current_keys = device_state.lock().await.get_keys();
+            while *is_running_clone.lock().await {
+                if let Ok((current_mouse, current_keys)) = state_receiver.lock().await.try_recv() {
+                    if last_mouse != current_mouse || last_keys != current_keys {
+                        let mut last_activity = last_activity.lock().await;
+                        *last_activity = Instant::now();
+                    }
 
-                if last_mouse != current_mouse || last_keys != current_keys {
-                    let mut last_activity = last_activity.lock().await;
-                    *last_activity = Instant::now();
+                    last_mouse = current_mouse;
+                    last_keys = current_keys;
                 }
 
-                last_mouse = current_mouse;
-                last_keys = current_keys;
-
-                sleep(Duration::from_millis(200)).await;
+                sleep(Duration::from_millis(10)).await;
             }
         });
     }
