@@ -2,25 +2,40 @@ use device_query::{DeviceQuery, DeviceState, Keycode, MouseState};
 use std::sync::Arc;
 use tokio::sync::{mpsc, Mutex};
 use tokio::time::{sleep, Duration, Instant};
+use std::thread;
 
 pub struct KeyMouseMonitor {
     last_activity: Arc<Mutex<Instant>>,
     sleep_timeout: Duration,
-    device_state: DeviceState,
     pub is_running: Arc<Mutex<bool>>,
-    state_sender: mpsc::Sender<(MouseState, Vec<Keycode>)>,
     state_receiver: Arc<Mutex<mpsc::Receiver<(MouseState, Vec<Keycode>)>>>,
 }
 
 impl KeyMouseMonitor {
     pub fn new(sleep_timeout: Duration) -> Self {
         let (state_sender, state_receiver) = mpsc::channel(100);
+        let is_running = Arc::new(Mutex::new(false));
+        
+        let is_running_clone = is_running.clone();
+        thread::Builder::new()
+            .name("device_state_poller".to_string())
+            .spawn(move || {
+                let device_state = DeviceState::new();
+                while *is_running_clone.blocking_lock() {
+                    let mouse = device_state.get_mouse();
+                    let keys = device_state.get_keys();
+                    if state_sender.blocking_send((mouse, keys)).is_err() {
+                        break;
+                    }
+                    thread::sleep(Duration::from_millis(10));
+                }
+            })
+            .expect("Failed to spawn device state poller thread");
+
         Self {
             last_activity: Arc::new(Mutex::new(Instant::now())),
             sleep_timeout,
-            device_state: DeviceState::new(),
-            is_running: Arc::new(Mutex::new(false)),
-            state_sender,
+            is_running,
             state_receiver: Arc::new(Mutex::new(state_receiver)),
         }
     }
@@ -63,27 +78,14 @@ impl KeyMouseMonitor {
         drop(is_running);
 
         let is_running = self.is_running.clone();
-        let is_running_clone = is_running.clone();
         let last_activity = self.last_activity.clone();
         let state_receiver = self.state_receiver.clone();
-        let state_sender = self.state_sender.clone();
-
-        // 启动一个线程来获取设备状态
-        std::thread::spawn(move || {
-            let device_state = DeviceState::new();
-            while is_running.blocking_lock().clone() {
-                let mouse = device_state.get_mouse();
-                let keys = device_state.get_keys();
-                let _ = state_sender.blocking_send((mouse, keys));
-                std::thread::sleep(Duration::from_millis(10));
-            }
-        });
 
         tokio::spawn(async move {
             let mut last_mouse = MouseState::default();
             let mut last_keys = Vec::new();
 
-            while *is_running_clone.lock().await {
+            while *is_running.lock().await {
                 if let Ok((current_mouse, current_keys)) = state_receiver.lock().await.try_recv() {
                     if last_mouse != current_mouse || last_keys != current_keys {
                         let mut last_activity = last_activity.lock().await;
