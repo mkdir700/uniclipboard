@@ -1,4 +1,5 @@
 use image::DynamicImage;
+use anyhow::Result;
 #[cfg(windows)]
 use std::ops::Range;
 #[cfg(windows)]
@@ -26,9 +27,9 @@ impl PlatformImage {
         }
     }
 
-    pub fn from_bytes(bytes: &[u8]) -> Self {
-        let img = image::load_from_memory(bytes).unwrap();
-        Self::new(img)
+    pub fn from_bytes(bytes: &[u8]) -> Result<Self> {
+        let img = image::load_from_memory(bytes)?;
+        Ok(Self::new(img))
     }
 
     /// 根据平台将图片转换为字节数组
