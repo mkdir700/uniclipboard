@@ -2,7 +2,7 @@ run:
 	cargo run
 
 test:
-	cargo test --features clipboard_tests
+	cargo test --features clipboard_tests,hardware_tests
 
 ci:
 	cargo test --features vendored_openssl
