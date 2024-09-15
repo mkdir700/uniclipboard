@@ -23,17 +23,11 @@ static INIT: Once = Once::new();
 fn setup() {
     INIT.call_once(|| {
         dotenv().ok();
-        let test_config = Config {
-            device_id: "test-device".to_string(),
-            webdav_url: env::var("WEBDAV_URL").expect("WEBDAV_URL not set"),
-            username: env::var("WEBDAV_USERNAME").expect("WEBDAV_USERNAME not set"),
-            password: env::var("WEBDAV_PASSWORD").expect("WEBDAV_PASSWORD not set"),
-            push_interval: Some(500),
-            pull_interval: Some(500),
-            sync_interval: Some(500),
-            enable_push: Some(true),
-            enable_pull: Some(true),
-        };
+        let mut test_config = Config::default();
+        test_config.device_id =  "test-device".to_string();
+        test_config.webdav_url = env::var("WEBDAV_URL").expect("WEBDAV_URL not set");
+        test_config.username = env::var("WEBDAV_USERNAME").expect("WEBDAV_USERNAME not set");
+        test_config.password = env::var("WEBDAV_PASSWORD").expect("WEBDAV_PASSWORD not set");
         *CONFIG.write().unwrap() = test_config;
     });
 }
