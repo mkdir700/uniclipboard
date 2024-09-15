@@ -6,7 +6,7 @@ use tokio::time::{sleep, Duration, Instant};
 pub struct KeyMouseMonitor {
     last_activity: Arc<Mutex<Instant>>,
     sleep_timeout: Duration,
-    device_state: DeviceState,
+    device_state: Arc<Mutex<DeviceState>>,
     pub is_running: Arc<Mutex<bool>>,
 }
 
@@ -15,7 +15,7 @@ impl KeyMouseMonitor {
         Self {
             last_activity: Arc::new(Mutex::new(Instant::now())),
             sleep_timeout,
-            device_state: DeviceState::new(),
+            device_state: Arc::new(Mutex::new(DeviceState::new())),
             is_running: Arc::new(Mutex::new(false)),
         }
     }
@@ -62,12 +62,12 @@ impl KeyMouseMonitor {
         let device_state = self.device_state.clone();
 
         tokio::spawn(async move {
-            let mut last_mouse = device_state.get_mouse();
-            let mut last_keys = device_state.get_keys();
+            let mut last_mouse = device_state.lock().await.get_mouse();
+            let mut last_keys = device_state.lock().await.get_keys();
 
             while *is_running.lock().await {
-                let current_mouse = device_state.get_mouse();
-                let current_keys = device_state.get_keys();
+                let current_mouse = device_state.lock().await.get_mouse();
+                let current_keys = device_state.lock().await.get_keys();
 
                 if last_mouse != current_mouse || last_keys != current_keys {
                     let mut last_activity = last_activity.lock().await;
