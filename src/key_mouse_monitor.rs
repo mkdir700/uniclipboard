@@ -58,7 +58,7 @@ impl KeyMouseMonitor {
     pub async fn is_sleep(&self) -> bool {
         let last_activity = self.get_last_activity().await;
         let now = Instant::now();
-        now - last_activity > self.sleep_timeout
+        now.duration_since(last_activity) > self.sleep_timeout
     }
 
     /// 开始监控

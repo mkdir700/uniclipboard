@@ -7,7 +7,7 @@ use tokio::signal::ctrl_c;
 use tokio::time::sleep;
 
 use crate::clipboard_handler::{ClipboardHandler, CloudClipboardHandler, LocalClipboardHandler};
-use crate::config::CONFIG;
+use crate::config::{Config, CONFIG};
 use crate::key_mouse_monitor::KeyMouseMonitor;
 use crate::network::WebDAVClient;
 
@@ -23,18 +23,17 @@ impl UniClipboard {
         let clipboard_handler =
             ClipboardHandler::new(cloud_clipboard_handler, local_clipboard_handler);
 
-        let enable_key_mouse_monitor = CONFIG
-            .read()
-            .unwrap()
+        let config = CONFIG.read().unwrap();
+        let default_config = Config::default();
+        let enable_key_mouse_monitor = config
             .enable_key_mouse_monitor
-            .unwrap_or(true);
+            .unwrap_or(default_config.enable_key_mouse_monitor.unwrap());
+
         let key_mouse_monitor: Option<KeyMouseMonitor> = if enable_key_mouse_monitor {
-            let key_mouse_monitor_sleep_timeout = CONFIG
-                .read()
-                .unwrap()
+            let key_mouse_monitor_sleep_timeout = config
                 .key_mouse_monitor_sleep_timeout
-                .unwrap_or(10);
-            Some(KeyMouseMonitor::new(Duration::from_secs(
+                .unwrap_or(default_config.key_mouse_monitor_sleep_timeout.unwrap());
+            Some(KeyMouseMonitor::new(Duration::from_millis(
                 key_mouse_monitor_sleep_timeout,
             )))
         } else {
@@ -84,7 +83,7 @@ impl UniClipboard {
                             self.clipboard_handler.resume().await;
                         }
                     }
-                    sleep(Duration::from_secs(1)).await;
+                    sleep(Duration::from_millis(100)).await;
                 } => {}
             }
         }
