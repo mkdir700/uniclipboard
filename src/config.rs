@@ -47,12 +47,23 @@ impl Config {
         }
     }
 
+    pub fn merge_with_default(&mut self) {
+        let default_config = Config::default();
+        if self.enable_key_mouse_monitor.is_none() {
+            self.enable_key_mouse_monitor = default_config.enable_key_mouse_monitor;
+        }
+        if self.key_mouse_monitor_sleep_timeout.is_none() {
+            self.key_mouse_monitor_sleep_timeout = default_config.key_mouse_monitor_sleep_timeout;
+        }
+    }
+
     pub fn load() -> Result<Self> {
         let config_path = get_config_path()?;
         if let Some(config_str) = fs::read_to_string(&config_path).ok() {
-            let config: Config =
+            let mut config: Config =
                 toml::from_str(&config_str).with_context(|| "Could not parse config file")?;
-            *CONFIG.write().unwrap() = config.clone();
+            config.merge_with_default();
+            CONFIG.write().unwrap().clone_from(&config);
             Ok(config)
         } else {
             Ok(Config::default())
