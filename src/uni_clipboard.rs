@@ -60,6 +60,7 @@ impl UniClipboard {
     ///
     /// 如果剪贴板监控失败，则返回错误。
     pub async fn start(&self) -> Result<(), Box<dyn Error>> {
+        let mut last_is_sleep = false;
         match &self.key_mouse_monitor {
             Some(monitor) => monitor.start().await,
             None => (),
@@ -78,9 +79,17 @@ impl UniClipboard {
                 _ = async {
                     if let Some(monitor) = &self.key_mouse_monitor {
                         if monitor.is_sleep().await {
-                            self.clipboard_handler.pause().await;
+                            if !last_is_sleep {
+                                self.clipboard_handler.pause().await;
+                                last_is_sleep = true;
+                                info!("Keyboard and mouse is sleeping, pausing clipboard sync");
+                            }
                         } else {
-                            self.clipboard_handler.resume().await;
+                            if last_is_sleep {
+                                self.clipboard_handler.resume().await;
+                                last_is_sleep = false;
+                                info!("Keyboard and mouse is awake, resuming clipboard sync");
+                            }
                         }
                     }
                     sleep(Duration::from_millis(100)).await;
