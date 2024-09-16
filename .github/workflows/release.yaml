@@ -32,8 +32,8 @@ jobs:
           - name: Linux x86_64
             # The used Rust target architecture
             target: x86_64-unknown-linux-gnu
-          - name: Linux aarch64
-            target: aarch64-unknown-linux-gnu
+          # - name: Linux aarch64
+          #   target: aarch64-unknown-linux-gnu
 
           # Mac OS
           - name: MacOS x86_64

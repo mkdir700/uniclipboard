@@ -88,7 +88,7 @@ pub trait ClipboardOperations: Send + Sync {
     fn write(&self, payload: Payload) -> Result<()> {
         match payload {
             Payload::Image(image) => {
-                let platform_image = PlatformImage::from_bytes(&image.content);
+                let platform_image = PlatformImage::from_bytes(&image.content)?;
                 self.write_image(&platform_image)
             }
             Payload::Text(text) => {
