@@ -28,7 +28,7 @@ impl ClipboardOperations for WinClipboard {
         match payload {
             Payload::Image(img) => {
                 let image_data = PlatformImage::from_bytes(&img.content);
-                self.write_image(&image_data)
+                self.write_image(&image_data?)
             }
             Payload::Text(text) => {
                 let text_str = String::from_utf8(text.content.to_vec())?;

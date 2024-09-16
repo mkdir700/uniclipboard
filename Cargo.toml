@@ -6,6 +6,13 @@ edition = "2021"
 [profile.release]
 lto = true
 
+[features]
+clipboard_tests = []
+network_tests = []
+vendored_openssl = ["openssl-sys/vendored"]
+hardware_tests = []
+testing = []
+
 [dependencies]
 # 网络通信
 tokio = { version = "1", features = ["full"] }
@@ -16,11 +23,11 @@ serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 
 # 错误处理
-anyhow = "1.0"
+anyhow = "1.0.89"
 
 # 日志
 log = "0.4"
-env_logger = "0.10"
+env_logger = "0.11.5"
 
 # 命令行参数解析
 clap = { version = "4.3", features = ["derive"] }
@@ -40,10 +47,12 @@ toml = "0.8.19"
 once_cell = "1.19.0"
 arboard = "3.4.0"
 image = "0.25.2"
-winapi = { version = "0.3.9", features = ["winuser", "basetsd", "minwindef", "winbase"] }
+openssl-sys = "0.9"
+device_query = "2.1.0"
 
 [target.'cfg(windows)'.dependencies]
 clipboard-win = { version = "5.4.0" }
+winapi = { version = "0.3.9", features = ["winuser", "basetsd", "minwindef", "winbase"] }
 
 [dependencies.uuid]
 version = "1.10.0"
@@ -62,3 +71,5 @@ lazy_static = "1.4.0"
 dotenv = "0.15.0"
 mockall = "0.11"
 tokio = { version = "1", features = ["full"] }
+serial_test = "3.1.1"
+enigo = "0.2.1"

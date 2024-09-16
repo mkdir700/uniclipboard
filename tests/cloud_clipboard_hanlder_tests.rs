@@ -2,35 +2,32 @@ use anyhow::Result;
 use bytes::Bytes;
 use chrono::Utc;
 use dotenv::dotenv;
+use image::ImageReader;
+use serial_test::serial;
 use std::env;
+use std::fs;
+use std::path::PathBuf;
 use std::sync::Once;
 use std::time::Duration;
 use uniclipboard::{
     clipboard_handler::CloudClipboardHandler,
     config::{Config, CONFIG},
     message::Payload,
-    network::WebDAVClient, LocalClipboardHandler,
+    network::WebDAVClient,
+    LocalClipboardHandler,
 };
-use image::ImageReader;
-use std::path::PathBuf;
-use std::fs;
+
 
 static INIT: Once = Once::new();
 
 fn setup() {
     INIT.call_once(|| {
         dotenv().ok();
-        let test_config = Config {
-            device_id: "test-device".to_string(),
-            webdav_url: env::var("WEBDAV_URL").expect("WEBDAV_URL not set"),
-            username: env::var("WEBDAV_USERNAME").expect("WEBDAV_USERNAME not set"),
-            password: env::var("WEBDAV_PASSWORD").expect("WEBDAV_PASSWORD not set"),
-            push_interval: Some(500),
-            pull_interval: Some(500),
-            sync_interval: Some(500),
-            enable_push: Some(true),
-            enable_pull: Some(true),
-        };
+        let mut test_config = Config::default();
+        test_config.device_id =  "test-device".to_string();
+        test_config.webdav_url = env::var("WEBDAV_URL").expect("WEBDAV_URL not set");
+        test_config.username = env::var("WEBDAV_USERNAME").expect("WEBDAV_USERNAME not set");
+        test_config.password = env::var("WEBDAV_PASSWORD").expect("WEBDAV_PASSWORD not set");
         *CONFIG.write().unwrap() = test_config;
     });
 }
@@ -47,6 +44,8 @@ async fn create_webdav_client() -> Result<WebDAVClient> {
 }
 
 #[tokio::test]
+#[cfg_attr(not(feature = "clipboard_tests"), ignore)]
+#[serial]
 async fn test_cloud_clipboard_push_text() {
     setup();
     let client = create_webdav_client().await.unwrap();
@@ -71,6 +70,8 @@ async fn test_cloud_clipboard_push_text() {
 }
 
 #[tokio::test]
+#[cfg_attr(not(feature = "clipboard_tests"), ignore)]
+#[serial]
 async fn test_cloud_clipboard_push_image() {
     setup();
     let client = create_webdav_client().await.unwrap();
@@ -99,6 +100,8 @@ async fn test_cloud_clipboard_push_image() {
 }
 
 #[tokio::test]
+#[cfg_attr(not(feature = "clipboard_tests"), ignore)]
+#[serial]
 async fn test_cloud_clipboard_pull_text() {
     setup();
     let client = create_webdav_client().await.unwrap();
@@ -129,6 +132,8 @@ async fn test_cloud_clipboard_pull_text() {
 }
 
 #[tokio::test]
+#[cfg_attr(not(feature = "clipboard_tests"), ignore)]
+#[serial]
 async fn test_cloud_clipboard_pull_image() {
     setup();
     let client = create_webdav_client().await.unwrap();
@@ -167,16 +172,16 @@ async fn test_cloud_clipboard_pull_image() {
     }
 }
 
-
 #[tokio::test]
-#[ignore = "该测试用例仅在本地测试环境下有效，在 CI/CD 环境下会报错，因为无法访问本地剪贴板"]
+#[cfg_attr(not(feature = "clipboard_tests"), ignore)]
+#[serial]
 async fn test_push_and_pull_image() -> Result<(), Box<dyn std::error::Error>> {
     setup();
     // 1. 读取测试图片
     let image_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("test_resources")
         .join("2048.jpeg");
-    
+
     let img = ImageReader::open(&image_path)?.decode()?;
     let (width, height) = (img.width(), img.height());
     let image_bytes = fs::read(&image_path)?;
@@ -197,7 +202,8 @@ async fn test_push_and_pull_image() -> Result<(), Box<dyn std::error::Error>> {
         CONFIG.read().unwrap().get_webdav_url(),
         CONFIG.read().unwrap().get_username(),
         CONFIG.read().unwrap().get_password(),
-    ).await?;
+    )
+    .await?;
     let cloud_handler = CloudClipboardHandler::new(client);
     let local_handler = LocalClipboardHandler::new();
 
@@ -224,7 +230,7 @@ async fn test_push_and_pull_image() -> Result<(), Box<dyn std::error::Error>> {
             // fs::write("pulled_image.jpeg", &pulled.content)?;
             // println!("拉取的图片已保存为 'pulled_image.jpeg'");
             // local_handler.write(pulled_payload.clone())?;
-        },
+        }
         _ => panic!("Payload 类型不匹配"),
     }
 
