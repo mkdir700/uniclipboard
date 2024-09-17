@@ -136,6 +136,7 @@ impl CloudClipboardHandler {
             let device_id = latest_file_meta.get_device_id();
             // 如果设备 id 相同,则跳过
             if device_id == CONFIG.read().unwrap().get_device_id() {
+                info!("No new content from cloud, because device id is same");
                 // 休眠 200ms
                 sleep(std::time::Duration::from_millis(200)).await;
                 continue;
@@ -155,6 +156,8 @@ impl CloudClipboardHandler {
                     *last_modified = Some(modified);
                 }
                 return Ok(payload);
+            } else {
+                info!("No new content from cloud, because no change");
             }
 
             // 休眠 200ms
