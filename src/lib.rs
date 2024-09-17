@@ -8,7 +8,8 @@ pub mod key_mouse_monitor;
 pub mod message;
 pub mod network;
 pub mod uni_clipboard;
-
+pub mod encrypt;
+pub mod utils;
 pub use cli::{parse_args, Args};
 pub use clipboard_handler::LocalClipboardHandler;
 pub use config::{get_config_path, Config, CONFIG};

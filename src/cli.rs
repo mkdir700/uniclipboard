@@ -23,6 +23,7 @@ pub fn parse_args() -> Args {
     Args::parse()
 }
 
+#[allow(dead_code)]
 pub fn interactive_input() -> Result<(String, String, String)> {
     let config = CONFIG.read().unwrap();
 

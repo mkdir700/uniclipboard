@@ -50,6 +50,9 @@ image = "0.25.2"
 openssl-sys = "0.9"
 device_query = "2.1.0"
 
+# 加密
+aes-gcm = "0.10.3"
+
 [target.'cfg(windows)'.dependencies]
 clipboard-win = { version = "5.4.0" }
 winapi = { version = "0.3.9", features = ["winuser", "basetsd", "minwindef", "winbase"] }
