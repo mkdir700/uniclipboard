@@ -136,6 +136,7 @@ impl CloudClipboardHandler {
             let device_id = latest_file_meta.get_device_id();
             // 如果设备 id 相同,则跳过
             if device_id == CONFIG.read().unwrap().get_device_id() {
+                info!("No new content from cloud, because device id is same");
                 // 休眠 200ms
                 sleep(std::time::Duration::from_millis(200)).await;
                 continue;
@@ -155,6 +156,8 @@ impl CloudClipboardHandler {
                     *last_modified = Some(modified);
                 }
                 return Ok(payload);
+            } else {
+                info!("No new content from cloud, because no change");
             }
 
             // 休眠 200ms
@@ -310,12 +313,28 @@ impl ClipboardHandler {
                 if let Some(p) = payload {
                     info!("Push to local: {}", p);
                     let content_hash = p.hash();
-                    if let Err(e) = local.write(p.clone()).await {
-                        error!("Failed to write to local clipboard: {}", e);
-                    } else {
-                        info!("Write to local success: {}", p);
-                        // 写入成功之后，记录 content_hash
-                        *last_content_hash.write().unwrap() = Some(content_hash);
+                    let mut retry_count = 0;
+                    let max_retries = 5;
+
+                    while retry_count < max_retries {
+                        match local.write(p.clone()).await {
+                            Ok(_) => {
+                                info!("Write to local success: {}", p);
+                                *last_content_hash.write().unwrap() = Some(content_hash);
+                                break;
+                            }
+                            Err(e) => {
+                                retry_count += 1;
+                                error!("Write to local failed (try {}/{}): {}", retry_count, max_retries, e);
+                                if retry_count < max_retries {
+                                    sleep(Duration::from_millis(500)).await;
+                                }
+                            }
+                        }
+                    }
+
+                    if retry_count == max_retries {
+                        error!("Write to local failed, reached max retries");
                     }
                 }
                 sleep(Duration::from_millis(100)).await;
