@@ -60,7 +60,7 @@ pub fn interactive_input() -> Result<(String, String, String)> {
         .context("无法读取密码")?;
 
     let password = if password.is_empty() {
-        config.password.clone()
+        config.get_password().clone()
     } else {
         password
     };

@@ -9,10 +9,10 @@ mod message;
 mod network;
 mod uni_clipboard;
 use crate::cli::{interactive_input, parse_args};
-use crate::config::Config;
 use crate::network::WebDAVClient;
 use crate::uni_clipboard::UniClipboard;
 use anyhow::Result;
+use config::CONFIG;
 use env_logger::Env;
 use log::{error, info};
 
@@ -21,7 +21,7 @@ async fn main() -> Result<()> {
     env_logger::Builder::from_env(Env::default().default_filter_or("info")).init();
 
     let args = parse_args();
-    let mut config = Config::load()?;
+    let mut config = CONFIG.write().unwrap();
 
     let (mut webdav_url, mut username, mut password) = if args.interactive {
         interactive_input()?
@@ -60,7 +60,7 @@ async fn main() -> Result<()> {
 
     config.webdav_url = webdav_url;
     config.username = username;
-    config.password = password;
+    config.set_password(password)?;
     config.save()?;
 
     let app = UniClipboard::new(client);
