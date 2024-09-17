@@ -8,6 +8,8 @@ mod key_mouse_monitor;
 mod message;
 mod network;
 mod uni_clipboard;
+mod encrypt;
+mod utils;
 use crate::cli::{interactive_input, parse_args};
 use crate::config::Config;
 use crate::network::WebDAVClient;

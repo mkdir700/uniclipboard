@@ -1,21 +1,24 @@
-use reqwest_dav::{list_cmd::ListEntity, Auth, ClientBuilder, Depth};
-use anyhow::Result;
-use std::result::Result::Ok;
-use crate::message::Payload;
+use crate::encrypt::Encryptor;
 use crate::file_metadata::FileMetadata;
-
+use crate::message::Payload;
+use crate::utils::string_to_32_bytes;
+use anyhow::Result;
+use reqwest_dav::{list_cmd::ListEntity, Auth, ClientBuilder, Depth};
 
 pub struct WebDAVClient {
     client: reqwest_dav::Client,
+    encryptor: Encryptor,
 }
 
 impl WebDAVClient {
     pub async fn new(webdav_url: String, username: String, password: String) -> Result<Self> {
+        let key = string_to_32_bytes(&password);
+        let encryptor = Encryptor::from_key(&key);
         let client = ClientBuilder::new()
             .set_host(webdav_url)
             .set_auth(Auth::Basic(username, password))
             .build()?;
-        Ok(Self { client })
+        Ok(Self { client, encryptor })
     }
 
     /// 检查是否连接到 WebDAV 服务器
@@ -68,19 +71,21 @@ impl WebDAVClient {
     ///
     /// * `dir` - A String representing the directory path to upload the Payload to.
     /// * `payload` - A Payload to be uploaded.
-    /// 
+    ///
     /// # Returns
-    /// 
+    ///
     /// Returns a Result containing the path of the uploaded file.
     pub async fn upload(&self, dir: String, payload: Payload) -> Result<String> {
-        let filename = format!("{}_{}.json", payload.get_device_id(), payload.hash());
+        let filename = format!("{}_{}.bin", payload.get_device_id(), payload.hash());
         let path: String;
         if dir == "/" {
             path = format!("/{}", filename);
         } else {
             path = format!("{}/{}", dir, filename);
         }
-        self.client.put(&path, payload.to_json()).await?;
+        let json_payload = payload.to_json();
+        let encrypted_payload = self.encryptor.encrypt(&json_payload.as_bytes())?;
+        self.client.put(&path, encrypted_payload).await?;
         Ok(path)
     }
 
@@ -97,7 +102,8 @@ impl WebDAVClient {
         let response = self.client.get(&path).await?;
         if response.status().is_success() {
             let content = response.bytes().await?;
-            let payload = serde_json::from_slice(&content)?;
+            let decrypted_payload = self.encryptor.decrypt(&content)?;
+            let payload = serde_json::from_slice(&decrypted_payload)?;
             Ok(payload)
         } else {
             Err(anyhow::anyhow!("Failed to download file"))
@@ -136,12 +142,13 @@ impl WebDAVClient {
     #[allow(dead_code)]
     pub async fn fetch_latest_file(&self, dir: String) -> Result<Payload> {
         let entries = self.client.list(&dir, Depth::Number(0)).await?;
-        let latest_file = entries.iter().map(|entity| {
-            match entity {
+        let latest_file = entries
+            .iter()
+            .map(|entity| match entity {
                 ListEntity::File(file) => file,
                 _ => panic!("Not a file"),
-            }
-        }).max_by_key(|file| file.last_modified);
+            })
+            .max_by_key(|file| file.last_modified);
 
         let response = self.client.get(&latest_file.unwrap().href).await?;
         if response.status().is_success() {
@@ -170,7 +177,8 @@ impl WebDAVClient {
     /// * No files are found in the specified directory.
     pub async fn fetch_latest_file_meta(&self, dir: String) -> Result<FileMetadata> {
         let entries = self.client.list(&dir, Depth::Number(1)).await?;
-        let list_file = entries.iter()
+        let list_file = entries
+            .iter()
             .filter_map(|entity| match entity {
                 ListEntity::File(file) => Some(file),
                 _ => None,
@@ -192,9 +200,9 @@ impl WebDAVClient {
     ///
     /// Returns a Result containing `Ok(())` if the file is successfully deleted,
     /// or an `Error` if the operation fails.
-    /// 
+    ///
     /// # Errors
-    /// 
+    ///
     /// This function will return an error if:
     /// * The WebDAV delete operation fails.
     #[allow(dead_code)]
