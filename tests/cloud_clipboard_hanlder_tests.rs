@@ -27,7 +27,7 @@ fn setup() {
         test_config.device_id =  "test-device".to_string();
         test_config.webdav_url = env::var("WEBDAV_URL").expect("WEBDAV_URL not set");
         test_config.username = env::var("WEBDAV_USERNAME").expect("WEBDAV_USERNAME not set");
-        test_config.password = env::var("WEBDAV_PASSWORD").expect("WEBDAV_PASSWORD not set");
+        test_config.set_password(env::var("WEBDAV_PASSWORD").expect("WEBDAV_PASSWORD not set")).unwrap();
         *CONFIG.write().unwrap() = test_config;
     });
 }
