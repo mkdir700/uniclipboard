@@ -25,6 +25,7 @@ pub struct CloudClipboardHandler {
 }
 
 pub struct LocalClipboardHandler {
+    last_content_hash: Arc<TokioMutex<Option<String>>>,
     factory: Arc<dyn ClipboardOperations>,
     paused: Arc<TokioMutex<bool>>,
 }
@@ -167,6 +168,7 @@ impl LocalClipboardHandler {
     pub fn new() -> Self {
         let factory = create_clipboard().unwrap();
         Self {
+            last_content_hash: Arc::new(TokioMutex::new(None)),
             factory,
             paused: Arc::new(TokioMutex::new(false)),
         }
@@ -191,8 +193,7 @@ impl LocalClipboardHandler {
     }
 
     pub async fn pull(&self, timeout: Option<Duration>) -> Result<Payload> {
-        let latest = self.read().await?;
-        let start_time = std::time::Instant::now();
+        let start_time = Instant::now();
 
         loop {
             if *self.paused.lock().await {
@@ -201,13 +202,24 @@ impl LocalClipboardHandler {
             }
 
             let current = self.read().await?;
-            if !current.eq(&latest) {
-                return Ok(current);
+            let current_hash = current.hash();
+
+            // 使用 RwLock 来安全地访问和修改 last_content_hash
+            {
+                let last_hash = self.last_content_hash.lock().await;
+                if last_hash.as_ref() != Some(&current_hash) {
+                    // 如果哈希值不同，更新 last_content_hash 并返回当前内容
+                    drop(last_hash); // 释放读锁
+                    let mut last_hash = self.last_content_hash.lock().await;
+                    *last_hash = Some(current_hash);
+                    return Ok(current);
+                }
             }
 
+            // 检查是否超时
             if let Some(timeout) = timeout {
                 if start_time.elapsed() > timeout {
-                    anyhow::bail!("Timeout while waiting for clipboard change");
+                    return Err(anyhow::anyhow!("拉取操作超时").into());
                 }
             }
 
@@ -283,10 +295,18 @@ impl ClipboardHandler {
 
         let local_clipboard_watcher = task::spawn(async move {
             loop {
-                if let Ok(payload) = local.pull(Some(Duration::from_secs(1))).await {
-                    debug!("Watch new content from local: {}", payload);
-                    let mut queue = queue.lock().await;
-                    queue.push_back(payload);
+                let result = local.pull(Some(Duration::from_secs(1))).await;
+                match result {
+                    Ok(payload) => {
+                        info!("Watch new content from local: {}", payload);
+                        let mut queue = queue.lock().await;
+                        queue.push_back(payload);
+                    }
+                    Err(_) => {
+                        // TODO: pull 拉取超时，会频繁打印错误日志. 需要自定义错误类型，如果是超时，则不打印错误日志
+                        // error!("Failed to pull from local: {}", e);
+                        continue;
+                    }
                 }
                 sleep(Duration::from_millis(100)).await;
             }
@@ -322,7 +342,10 @@ impl ClipboardHandler {
                             }
                             Err(e) => {
                                 retry_count += 1;
-                                error!("Write to local failed (try {}/{}): {}", retry_count, max_retries, e);
+                                error!(
+                                    "Write to local failed (try {}/{}): {}",
+                                    retry_count, max_retries, e
+                                );
                                 if retry_count < max_retries {
                                     sleep(Duration::from_millis(500)).await;
                                 }
