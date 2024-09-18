@@ -4,7 +4,7 @@ use arboard::Clipboard;
 use bytes::Bytes;
 use chrono::Utc;
 use image::DynamicImage;
-use image::{ImageBuffer, ImageFormat, Rgba};
+use image::ImageFormat;
 use std::io::Cursor;
 use std::sync::{Arc, Mutex};
 
