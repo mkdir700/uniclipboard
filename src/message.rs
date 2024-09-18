@@ -139,7 +139,7 @@ impl Payload {
     pub fn eq(&self, other: Option<&Payload>) -> bool {
         // TODO: 使用更高效的方式比较两个 Payload 是否相等
         //  比如对于图片类型，比较图片的大小、格式、尺寸等
-        match (other) {
+        match other {
             Some(other) => self.hash() == other.hash(),
             None => false,
         }
