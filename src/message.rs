@@ -120,7 +120,7 @@ impl Payload {
     pub fn is_image(&self) -> bool {
         matches!(self, Payload::Image(_))
     }
-
+    
     #[allow(dead_code)]
     pub fn as_image(&self) -> Option<&ImagePayload> {
         if let Payload::Image(image) = self {
@@ -146,6 +146,7 @@ impl Payload {
         serde_json::to_string(self).unwrap()
     }
 }
+
 
 impl fmt::Display for Payload {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
