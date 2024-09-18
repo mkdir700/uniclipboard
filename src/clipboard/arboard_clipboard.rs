@@ -1,6 +1,9 @@
+use crate::image::PlatformImage;
+
 use super::traits::ClipboardOperations;
 use anyhow::Result;
 use arboard::Clipboard;
+use image::{DynamicImage, ImageBuffer, Rgba};
 use std::sync::{Arc, Mutex};
 
 pub struct ArboardClipboard(Arc<Mutex<Clipboard>>);
@@ -31,7 +34,7 @@ impl ClipboardOperations for ArboardClipboard {
         Ok(DynamicImage::ImageRgba8(img))
     }
 
-    fn write_image(&self, image: DynamicImage) -> Result<()> {
+    fn write_image(&self, image: &PlatformImage) -> Result<()> {
         let clipboard = self.clipboard();
         let mut guard = clipboard
             .lock()
