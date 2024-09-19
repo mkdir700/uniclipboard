@@ -46,6 +46,7 @@ fn test_save_config() {
         webdav_url: "https://save.example.com/webdav".to_string(),
         username: "save_testuser".to_string(),
         password: "save_testpass".to_string(),
+        max_history: Some(10),
         push_interval: Some(500),
         pull_interval: Some(500),
         sync_interval: Some(500),

@@ -25,6 +25,7 @@ fn setup() {
             webdav_url: env::var("WEBDAV_URL").expect("WEBDAV_URL not set"),
             username: env::var("WEBDAV_USERNAME").expect("WEBDAV_USERNAME not set"),
             password: env::var("WEBDAV_PASSWORD").expect("WEBDAV_PASSWORD not set"),
+            max_history: Some(10),
             push_interval: Some(500),
             pull_interval: Some(500),
             sync_interval: Some(500),
