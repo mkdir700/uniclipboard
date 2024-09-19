@@ -15,6 +15,7 @@ pub struct Config {
     pub webdav_url: String,
     pub username: String,
     pub password: String,
+    pub max_history: Option<u64>,
     pub push_interval: Option<u64>, // ms
     pub pull_interval: Option<u64>, // ms
     pub sync_interval: Option<u64>, // ms
@@ -33,6 +34,7 @@ impl Config {
         Self {
             device_id: generate_device_id(),
             webdav_url: String::new(),
+            max_history: Some(10),
             username: String::new(),
             password: String::new(),
             push_interval: Some(500),
@@ -56,6 +58,9 @@ impl Config {
     }
 
     pub fn save(&self) -> Result<()> {
+        if self.max_history.is_none() || self.max_history.unwrap() <= 1 {
+            anyhow::bail!("max_history must be greater than 1");
+        }
         let config_path = get_config_path()?;
         let config_str = toml::to_string(self)?;
         fs::create_dir_all(config_path.parent().unwrap())?;
