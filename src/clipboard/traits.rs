@@ -4,14 +4,12 @@ use arboard::Clipboard;
 use bytes::Bytes;
 use chrono::Utc;
 use image::DynamicImage;
-use image::ImageFormat;
+use image::{ImageBuffer, ImageFormat, Rgba};
 use std::io::Cursor;
 use std::sync::{Arc, Mutex};
 
 pub trait ClipboardOperations: Send + Sync {
     fn clipboard(&self) -> Arc<Mutex<Clipboard>>;
-    fn read_image(&self) -> Result<DynamicImage>;
-    fn write_image(&self, image: &PlatformImage) -> Result<()>;
 
     fn read_text(&self) -> Result<String> {
         let clipboard = self.clipboard();
@@ -31,6 +29,35 @@ pub trait ClipboardOperations: Send + Sync {
         guard
             .set_text(text)
             .map_err(|e| anyhow::anyhow!("Failed to write text: {}", e))
+    }
+
+    fn read_image(&self) -> Result<DynamicImage> {
+        let clipboard = self.clipboard();
+        let mut guard = clipboard.lock().unwrap();
+        let image = guard
+            .get_image()
+            .map_err(|e| anyhow::anyhow!("Failed to read image: {}", e))?;
+        let raw_image_bytes = image.bytes.to_vec();
+        let img = ImageBuffer::<Rgba<u8>, _>::from_raw(
+            image.width as u32,
+            image.height as u32,
+            raw_image_bytes.clone(),
+        )
+        .ok_or_else(|| anyhow::anyhow!("Failed to create image buffer"))?;
+        Ok(DynamicImage::ImageRgba8(img))
+    }
+
+    fn write_image(&self, image: &PlatformImage) -> Result<()> {
+        let clipboard = self.clipboard();
+        let mut guard = clipboard
+            .lock()
+            .map_err(|e| anyhow::anyhow!("Failed to lock clipboard: {}", e))?;
+        guard.set_image(arboard::ImageData {
+            width: image.width,
+            height: image.height,
+            bytes: image.to_vec().into(),
+        })?;
+        Ok(())
     }
 
     fn read(&self) -> Result<Payload> {
