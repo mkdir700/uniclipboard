@@ -2,10 +2,9 @@ use super::traits::ClipboardOperations;
 use crate::{image::PlatformImage, message::Payload};
 use anyhow::{anyhow, Result};
 use arboard::Clipboard;
-use clipboard_win::{empty, formats, get_clipboard, set_clipboard};
-use image::DynamicImage;
+use clipboard_win::{empty, formats, set_clipboard};
 use std::sync::{Arc, Mutex};
-use winapi::um::winuser::{CloseClipboard, OpenClipboard};
+use winapi::um::winuser::{CloseClipboard, GetOpenClipboardWindow, OpenClipboard};
 
 pub struct WinClipboard(Arc<Mutex<Clipboard>>);
 
@@ -46,18 +45,6 @@ impl WinClipboard {
 impl ClipboardOperations for WinClipboard {
     fn clipboard(&self) -> Arc<Mutex<Clipboard>> {
         self.0.clone()
-    }
-
-    fn read_image(&self) -> Result<DynamicImage> {
-        let _clipboard = WinClipboard::new()?;
-        match get_clipboard(formats::Bitmap) {
-            Ok(data) => {
-                let img = image::load_from_memory(&data)
-                    .expect("Failed to load image from clipboard data");
-                Ok(img)
-            }
-            Err(e) => Err(anyhow!("Failed to read image: {}", e)),
-        }
     }
 
     fn write_image(&self, image: &PlatformImage) -> Result<()> {
