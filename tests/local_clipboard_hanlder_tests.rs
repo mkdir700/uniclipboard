@@ -6,13 +6,13 @@ use serial_test::serial;
 use std::fs;
 use std::io::Write;
 use std::{fs::File, path::PathBuf};
-use uniclipboard::{LocalClipboardHandler, Payload};
+use uniclipboard::{LocalClipboard, Payload};
 
 #[tokio::test]
 #[cfg_attr(not(feature = "clipboard_tests"), ignore)]
 #[serial]
 async fn test_read_image_from_local_clipboard() {
-    let handler = LocalClipboardHandler::new();
+    let handler = LocalClipboard::new();
 
     let payload = handler.read().await.unwrap();
     if let Payload::Image(image_payload) = payload {
@@ -46,7 +46,7 @@ async fn test_write_image_to_local_clipboard() -> Result<(), Box<dyn std::error:
         "png".to_string(),
         image_bytes.len(),
     );
-    let local_handler = LocalClipboardHandler::new();
+    let local_handler = LocalClipboard::new();
     local_handler.write(payload.clone()).await?;
 
     tokio::time::sleep(std::time::Duration::from_secs(5)).await;
@@ -61,7 +61,7 @@ async fn test_read_write_clipboard_text() {
     let mut clipboard = Clipboard::new().unwrap();
     clipboard.set_text("random text").unwrap();
 
-    let local_handler = LocalClipboardHandler::new();
+    let local_handler = LocalClipboard::new();
     let payload = local_handler.read().await.unwrap();
     if let Payload::Text(text_payload) = payload {
         assert_ne!(text_payload.text(), test_text);
@@ -106,7 +106,7 @@ async fn test_read_write_clipboard_image() -> Result<(), Box<dyn std::error::Err
         "jpeg".to_string(),
         image_bytes.len(),
     );
-    let local_handler = LocalClipboardHandler::new();
+    let local_handler = LocalClipboard::new();
     local_handler.write(payload).await?;
     Ok(())
 }

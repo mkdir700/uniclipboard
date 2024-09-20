@@ -3,13 +3,13 @@ use chrono::Utc;
 use serial_test::serial;
 use std::time::Duration;
 use tokio::time::timeout;
-use uniclipboard::{LocalClipboardHandler, Payload};
+use uniclipboard::{LocalClipboard, Payload};
 
 #[tokio::test]
 #[cfg_attr(not(feature = "clipboard_tests"), ignore)]
 #[serial]
 async fn test_local_clipboard_write_and_read() {
-    let handler = LocalClipboardHandler::new();
+    let handler = LocalClipboard::new();
 
     // 准备测试数据
     let test_content = "测试剪贴板内容";
@@ -31,7 +31,7 @@ async fn test_local_clipboard_write_and_read() {
 #[cfg_attr(not(feature = "clipboard_tests"), ignore)]
 #[serial]
 async fn test_local_clipboard_pull() {
-    let handler = LocalClipboardHandler::new();
+    let handler = LocalClipboard::new();
 
     // 准备初始测试数据
     let initial_content = "初始剪贴板内容";
@@ -44,7 +44,7 @@ async fn test_local_clipboard_pull() {
 
     // 在另一个任务中更改剪贴板内容
     tokio::spawn(async move {
-        let handler_clone = LocalClipboardHandler::new();
+        let handler_clone = LocalClipboard::new();
         tokio::time::sleep(std::time::Duration::from_millis(100)).await;
         let new_content = "新的剪贴板内容";
         let new_payload =
@@ -66,7 +66,7 @@ async fn test_local_clipboard_pull() {
 #[cfg_attr(not(feature = "clipboard_tests"), ignore)]
 #[serial]
 async fn test_local_clipboard_pull_no_change() {
-    let handler = LocalClipboardHandler::new();
+    let handler = LocalClipboard::new();
 
     // 设置初始内容
     let content = "不变的剪贴板内容";

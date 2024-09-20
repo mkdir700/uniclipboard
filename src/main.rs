@@ -2,73 +2,61 @@ mod cli;
 mod clipboard;
 mod clipboard_handler;
 mod config;
+mod device;
+mod encrypt;
 mod file_metadata;
 mod image;
 mod key_mouse_monitor;
 mod message;
 mod network;
+mod remote_sync;
 mod uni_clipboard;
-mod encrypt;
 mod utils;
+
+use log::{error, info};
+use std::sync::Arc;
+
 use crate::cli::{interactive_input, parse_args};
+use crate::clipboard_handler::LocalClipboard;
 use crate::config::Config;
-use crate::network::WebDAVClient;
+use crate::remote_sync::{RemoteClipboardSync, RemoteSyncManager, WebDavSync, WebSocketSync};
 use crate::uni_clipboard::UniClipboard;
 use anyhow::Result;
 use env_logger::Env;
-use log::{error, info};
+use network::WebDAVClient;
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    env_logger::Builder::from_env(Env::default().default_filter_or("info")).init();
-
+    env_logger::Builder::from_env(Env::default().default_filter_or("debug")).init();
     let args = parse_args();
     let mut config = Config::load()?;
-
-    let (mut webdav_url, mut username, mut password) = if args.interactive {
-        interactive_input()?
-    } else {
-        (
-            args.webdav_url.unwrap_or_default(),
-            args.username.unwrap_or_default(),
-            args.password.unwrap_or_default(),
-        )
-    };
-
-    // 如果命令行参数提供的是空值，则从配置文件中获取
-    if webdav_url.is_empty() {
-        webdav_url = config.get_webdav_url();
+    if args.interactive {
+        interactive_input(&mut config)?;
     }
-    if username.is_empty() {
-        username = config.get_username();
-    }
-    if password.is_empty() {
-        password = config.get_password();
-    }
-    // 验证是否可连接
-    let client = WebDAVClient::new(webdav_url.clone(), username.clone(), password.clone()).await?;
-
-    // 验证是否可连接
-    let is_connected = client.is_connected().await;
-    if is_connected {
-        info!(
-            "Connected to WebDAV server, device_id: {}",
-            config.get_device_id()
-        );
-    } else {
-        error!("Failed to connect to WebDAV server");
-        return Err(anyhow::anyhow!("Failed to connect to WebDAV server"));
-    }
-
-    config.webdav_url = webdav_url;
-    config.username = username;
-    config.password = password;
     config.save()?;
 
-    let app = UniClipboard::new(client);
+    let local_clipboard = LocalClipboard::new();
+    let remote_sync: Arc<dyn RemoteClipboardSync> = if config.enable_websocket.unwrap_or(false) {
+        let is_server = config.is_server.unwrap();
+        Arc::new(WebSocketSync::new(is_server))
+    } else if config.enable_webdav.unwrap_or(false) {
+        let webdav_client = WebDAVClient::new(
+            config.webdav_url.unwrap(),
+            config.username.unwrap(),
+            config.password.unwrap(),
+        )
+        .await?;
+        Arc::new(WebDavSync::new(webdav_client))
+    } else {
+        return Err(anyhow::anyhow!("No remote sync enabled"));
+    };
+    let remote_sync_manager = RemoteSyncManager::new();
+    remote_sync_manager.set_sync_handler(remote_sync).await;
+    let app = UniClipboard::new(local_clipboard, remote_sync_manager);
     match app.start().await {
         Ok(_) => info!("UniClipboard started successfully"),
         Err(e) => error!("Failed to start UniClipboard: {}", e),
     }
+    app.wait_for_stop().await?;
     Ok(())
 }

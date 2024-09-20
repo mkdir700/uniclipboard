@@ -10,12 +10,13 @@ use std::path::PathBuf;
 use std::sync::Once;
 use std::time::Duration;
 use uniclipboard::{
-    clipboard_handler::CloudClipboardHandler,
     config::{Config, CONFIG},
     message::Payload,
     network::WebDAVClient,
-    LocalClipboardHandler,
+    LocalClipboard,
 };
+use uniclipboard::remote_sync::webdav_handler::WebDavSync;
+use uniclipboard::remote_sync::traits::RemoteClipboardSync;
 
 
 static INIT: Once = Once::new();
@@ -25,9 +26,9 @@ fn setup() {
         dotenv().ok();
         let mut test_config = Config::default();
         test_config.device_id =  "test-device".to_string();
-        test_config.webdav_url = env::var("WEBDAV_URL").expect("WEBDAV_URL not set");
-        test_config.username = env::var("WEBDAV_USERNAME").expect("WEBDAV_USERNAME not set");
-        test_config.password = env::var("WEBDAV_PASSWORD").expect("WEBDAV_PASSWORD not set");
+        test_config.webdav_url = Some(env::var("WEBDAV_URL").expect("WEBDAV_URL not set"));
+        test_config.username = Some(env::var("WEBDAV_USERNAME").expect("WEBDAV_USERNAME not set"));
+        test_config.password = Some(env::var("WEBDAV_PASSWORD").expect("WEBDAV_PASSWORD not set"));
         *CONFIG.write().unwrap() = test_config;
     });
 }
@@ -36,9 +37,9 @@ async fn create_webdav_client() -> Result<WebDAVClient> {
     setup();
     let config = CONFIG.read().unwrap();
     WebDAVClient::new(
-        config.get_webdav_url(),
-        config.get_username(),
-        config.get_password(),
+        config.webdav_url.unwrap().clone(),
+        config.username.unwrap().clone(),
+        config.password.unwrap().clone(),
     )
     .await
 }
@@ -49,7 +50,7 @@ async fn create_webdav_client() -> Result<WebDAVClient> {
 async fn test_cloud_clipboard_push_text() {
     setup();
     let client = create_webdav_client().await.unwrap();
-    let handler = CloudClipboardHandler::new(client);
+    let handler = WebDavSync::new(client);
     let payload = Payload::new_text(
         Bytes::from("test content"),
         "test_device".to_string(),
@@ -75,7 +76,7 @@ async fn test_cloud_clipboard_push_text() {
 async fn test_cloud_clipboard_push_image() {
     setup();
     let client = create_webdav_client().await.unwrap();
-    let handler = CloudClipboardHandler::new(client);
+    let handler = WebDavSync::new(client);
     let payload = Payload::new_image(
         Bytes::from(vec![0u8; 100]), // 模拟图片数据
         "test_device".to_string(),
@@ -105,7 +106,7 @@ async fn test_cloud_clipboard_push_image() {
 async fn test_cloud_clipboard_pull_text() {
     setup();
     let client = create_webdav_client().await.unwrap();
-    let handler = CloudClipboardHandler::new(client);
+    let handler = WebDavSync::new(client);
 
     // push a text file to the cloud clipboard
     let payload = Payload::new_text(
@@ -137,7 +138,7 @@ async fn test_cloud_clipboard_pull_text() {
 async fn test_cloud_clipboard_pull_image() {
     setup();
     let client = create_webdav_client().await.unwrap();
-    let handler = CloudClipboardHandler::new(client);
+    let handler = WebDavSync::new(client);
 
     // push an image file to the cloud clipboard
     let image_data = vec![0u8; 100]; // 模拟图片数据
@@ -204,8 +205,8 @@ async fn test_push_and_pull_image() -> Result<(), Box<dyn std::error::Error>> {
         CONFIG.read().unwrap().get_password(),
     )
     .await?;
-    let cloud_handler = CloudClipboardHandler::new(client);
-    let local_handler = LocalClipboardHandler::new();
+    let cloud_handler = WebDavSync::new(client);
+    let local_handler = LocalClipboard::new();
 
     // 2. 将图片 push 到云端
     let path = cloud_handler.push(original_payload.clone()).await?;
