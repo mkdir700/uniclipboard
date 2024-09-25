@@ -45,6 +45,9 @@ impl WebSocketSync {
 
 #[async_trait]
 impl RemoteClipboardSync for WebSocketSync {
+    /// 暂停远程同步
+    ///
+    /// 仅客户端会被暂停，服务端不会被暂停
     async fn pause(&self) -> Result<()> {
         self.stop().await
     }

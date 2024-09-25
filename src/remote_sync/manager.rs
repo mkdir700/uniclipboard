@@ -65,4 +65,22 @@ impl RemoteSyncManager {
             Err(anyhow::anyhow!("No sync handler set"))
         }
     }
+
+    pub async fn pause(&self) -> Result<()> {
+        let sync_handler = self.sync_handler.read().await;
+        if let Some(handler) = sync_handler.as_ref() {
+            handler.pause().await
+        } else {
+            Err(anyhow::anyhow!("No sync handler set"))
+        }
+    }
+
+    pub async fn resume(&self) -> Result<()> {
+        let sync_handler = self.sync_handler.read().await;
+        if let Some(handler) = sync_handler.as_ref() {
+            handler.resume().await
+        } else {
+            Err(anyhow::anyhow!("No sync handler set"))
+        }
+    }
 }

@@ -13,8 +13,10 @@ mod remote_sync;
 mod uni_clipboard;
 mod utils;
 
+use key_mouse_monitor::KeyMouseMonitor;
 use log::{error, info};
 use std::sync::Arc;
+use std::time::Duration;
 
 use crate::cli::{interactive_input, parse_args};
 use crate::clipboard_handler::LocalClipboard;
@@ -50,9 +52,15 @@ async fn main() -> Result<()> {
     } else {
         return Err(anyhow::anyhow!("No remote sync enabled"));
     };
+
     let remote_sync_manager = RemoteSyncManager::new();
     remote_sync_manager.set_sync_handler(remote_sync).await;
-    let app = UniClipboard::new(local_clipboard, remote_sync_manager);
+
+    let key_mouse_monitor = KeyMouseMonitor::new(Duration::from_secs(
+        config.key_mouse_monitor_sleep_timeout.unwrap(),
+    ));
+
+    let app = UniClipboard::new(local_clipboard, remote_sync_manager, key_mouse_monitor);
     match app.start().await {
         Ok(_) => info!("UniClipboard started successfully"),
         Err(e) => error!("Failed to start UniClipboard: {}", e),

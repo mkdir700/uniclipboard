@@ -3,6 +3,7 @@ use crate::clipboard::traits::ClipboardOperations;
 use crate::message::Payload;
 use anyhow::Result;
 use log::debug;
+use log::error;
 use std::sync::Arc;
 use tokio::sync::mpsc;
 use tokio::sync::Mutex as TokioMutex;
@@ -95,7 +96,9 @@ impl LocalClipboard {
                         }
                     }
                     debug!("Watch new content from local: {}", payload);
-                    tx.send(payload).await.unwrap();
+                    if let Err(e) = tx.send(payload).await {
+                        error!("Failed to send payload: {:?}", e);
+                    }
                     last_content_hash = Some(current_content_hash);
                 }
             }

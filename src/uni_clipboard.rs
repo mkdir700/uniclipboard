@@ -2,25 +2,37 @@ use anyhow::Result;
 use log::{error, info};
 use std::sync::Arc;
 use std::time::Duration;
+use tokio::select;
+use tokio::signal::ctrl_c;
 use tokio::sync::{mpsc, RwLock};
+use tokio::time::sleep;
 
 use crate::clipboard_handler::LocalClipboard;
+use crate::key_mouse_monitor::KeyMouseMonitor;
 use crate::message::Payload;
 use crate::remote_sync::manager::RemoteSyncManager;
 
 pub struct UniClipboard {
     clipboard: Arc<LocalClipboard>,
     remote_sync: Arc<RemoteSyncManager>,
+    key_mouse_monitor: Option<Arc<KeyMouseMonitor>>,
     is_running: Arc<RwLock<bool>>,
+    is_paused: Arc<RwLock<bool>>,
     last_content_hash: Arc<RwLock<Option<String>>>,
 }
 
 impl UniClipboard {
-    pub fn new(clipboard: LocalClipboard, remote_sync: RemoteSyncManager) -> Self {
+    pub fn new(
+        clipboard: LocalClipboard,
+        remote_sync: RemoteSyncManager,
+        key_mouse_monitor: KeyMouseMonitor,
+    ) -> Self {
         Self {
             clipboard: Arc::new(clipboard),
             remote_sync: Arc::new(remote_sync),
+            key_mouse_monitor: Some(Arc::new(key_mouse_monitor)),
             is_running: Arc::new(RwLock::new(false)),
+            is_paused: Arc::new(RwLock::new(false)),
             last_content_hash: Arc::new(RwLock::new(None)),
         }
     }
@@ -42,6 +54,11 @@ impl UniClipboard {
         self.start_local_to_remote_sync(clipboard_receiver).await?;
 
         self.start_remote_to_local_sync().await?;
+
+        // 启动键盘鼠标监控
+        if let Some(monitor) = &self.key_mouse_monitor {
+            monitor.start().await;
+        }
 
         Ok(())
     }
@@ -108,7 +125,6 @@ impl UniClipboard {
         Ok(())
     }
 
-    #[allow(dead_code)]
     pub async fn stop(&self) -> Result<()> {
         let mut is_running = self.is_running.write().await;
         if !*is_running {
@@ -125,65 +141,73 @@ impl UniClipboard {
         Ok(())
     }
 
-    pub async fn wait_for_stop(&self) -> Result<()> {
-        let is_running = self.is_running.clone();
-        while *is_running.read().await {
-            tokio::time::sleep(Duration::from_secs(1)).await;
+    pub async fn pause(&self) -> Result<()> {
+        let mut is_paused = self.is_paused.write().await;
+        *is_paused = true;
+
+        // 暂停本地剪切板监听
+        self.clipboard.pause().await;
+
+        // 暂停远程同步
+        if let Err(e) = self.remote_sync.pause().await {
+            error!("Failed to pause remote sync: {:?}", e);
         }
+
         Ok(())
     }
 
-    // pub async fn start(&self) -> Result<(), Box<dyn Error>> {
-    //     let mut last_is_sleep = false;
-    //     match &self.key_mouse_monitor {
-    //         Some(monitor) => monitor.start().await,
-    //         None => (),
-    //     }
+    pub async fn resume(&self) -> Result<()> {
+        let mut is_paused = self.is_paused.write().await;
+        *is_paused = false;
 
-    //     // 启动剪贴板监控
-    //     self.clipboard_handler.start().await?;
+        // 恢复本地剪切板监听
+        self.clipboard.resume().await;
 
-    //     // 如果是 server 端，则启动 websocket 服务
-    //     // 如果是 client 端，则连接 server 端
-    //     if self.is_server {
-    //         self.start_websocket_server().await?;
-    //     } else {
-    //         self.connect_server().await?;
-    //     }
+        // 恢复远程同步
+        if let Err(e) = self.remote_sync.resume().await {
+            error!("Failed to resume remote sync: {:?}", e);
+        }
 
-    //     // 监控系统是否处于休眠状态，并根据状态暂停或恢复剪贴板同步。
-    //     loop {
-    //         select! {
-    //             _ = ctrl_c() => {
-    //                 info!("Received Ctrl+C, stopping...");
-    //                 break;
-    //             }
-    //             _ = async {
-    //                 if let Some(monitor) = &self.key_mouse_monitor {
-    //                     if monitor.is_sleep().await {
-    //                         if !last_is_sleep {
-    //                             self.clipboard_handler.pause().await;
-    //                             last_is_sleep = true;
-    //                             info!("Keyboard and mouse is sleeping, pausing clipboard sync");
-    //                         }
-    //                     } else {
-    //                         if last_is_sleep {
-    //                             self.clipboard_handler.resume().await;
-    //                             last_is_sleep = false;
-    //                             info!("Keyboard and mouse is awake, resuming clipboard sync");
-    //                         }
-    //                     }
-    //                 }
-    //                 sleep(Duration::from_millis(100)).await;
-    //             } => {}
-    //         }
-    //     }
+        Ok(())
+    }
 
-    //     match &self.key_mouse_monitor {
-    //         Some(monitor) => monitor.stop().await,
-    //         None => (),
-    //     }
+    pub async fn wait_for_stop(&self) -> Result<()> {
+        let mut last_is_sleep = false;
 
-    //     Ok(())
-    // }
+        loop {
+            select! {
+                _ = ctrl_c() => {
+                    info!("收到 Ctrl+C，正在停止...");
+                    break;
+                }
+                _ = async {
+                    if let Some(monitor) = &self.key_mouse_monitor {
+                        if monitor.is_sleep().await {
+                            if !last_is_sleep {
+                                if let Err(e) = self.pause().await {
+                                    error!("暂停失败: {:?}", e);
+                                }
+                                last_is_sleep = true;
+                                info!("剪贴板同步已暂停，因为键盘和鼠标处于睡眠状态");
+                            }
+                        } else {
+                            if last_is_sleep {
+                                if let Err(e) = self.resume().await {
+                                    error!("恢复失败: {:?}", e);
+                                }
+                                last_is_sleep = false;
+                                info!("剪贴板同步已恢复，因为键盘和鼠标已唤醒");
+                            }
+                        }
+                    }
+                    sleep(Duration::from_secs(1)).await;
+                } => {}
+            }
+        }
+
+        // 当收到 Ctrl+C 信号后，停止同步
+        self.stop().await?;
+        info!("剪贴板同步已停止");
+        Ok(())
+    }
 }
