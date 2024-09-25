@@ -56,11 +56,13 @@ async fn main() -> Result<()> {
     let remote_sync_manager = RemoteSyncManager::new();
     remote_sync_manager.set_sync_handler(remote_sync).await;
 
+    // 暂时不使用键鼠监听器
+    #[allow(unused_variables)]
     let key_mouse_monitor = KeyMouseMonitor::new(Duration::from_secs(
         config.key_mouse_monitor_sleep_timeout.unwrap(),
     ));
 
-    let app = UniClipboard::new(local_clipboard, remote_sync_manager, key_mouse_monitor);
+    let app = UniClipboard::new(local_clipboard, remote_sync_manager, None);
     match app.start().await {
         Ok(_) => info!("UniClipboard started successfully"),
         Err(e) => error!("Failed to start UniClipboard: {}", e),

@@ -8,14 +8,14 @@ use tokio::sync::{mpsc, RwLock};
 use tokio::time::sleep;
 
 use crate::clipboard_handler::LocalClipboard;
-use crate::key_mouse_monitor::KeyMouseMonitor;
+use crate::key_mouse_monitor::{self, KeyMouseMonitor};
 use crate::message::Payload;
 use crate::remote_sync::manager::RemoteSyncManager;
 
 pub struct UniClipboard {
     clipboard: Arc<LocalClipboard>,
     remote_sync: Arc<RemoteSyncManager>,
-    key_mouse_monitor: Option<Arc<KeyMouseMonitor>>,
+    key_mouse_monitor: Arc<Option<KeyMouseMonitor>>,
     is_running: Arc<RwLock<bool>>,
     is_paused: Arc<RwLock<bool>>,
     last_content_hash: Arc<RwLock<Option<String>>>,
@@ -25,12 +25,12 @@ impl UniClipboard {
     pub fn new(
         clipboard: LocalClipboard,
         remote_sync: RemoteSyncManager,
-        key_mouse_monitor: KeyMouseMonitor,
+        key_mouse_monitor: Option<KeyMouseMonitor>,
     ) -> Self {
         Self {
             clipboard: Arc::new(clipboard),
             remote_sync: Arc::new(remote_sync),
-            key_mouse_monitor: Some(Arc::new(key_mouse_monitor)),
+            key_mouse_monitor: Arc::new(key_mouse_monitor),
             is_running: Arc::new(RwLock::new(false)),
             is_paused: Arc::new(RwLock::new(false)),
             last_content_hash: Arc::new(RwLock::new(None)),
@@ -56,7 +56,7 @@ impl UniClipboard {
         self.start_remote_to_local_sync().await?;
 
         // 启动键盘鼠标监控
-        if let Some(monitor) = &self.key_mouse_monitor {
+        if let Some(monitor) = self.key_mouse_monitor.as_ref() {
             monitor.start().await;
         }
 
@@ -181,7 +181,7 @@ impl UniClipboard {
                     break;
                 }
                 _ = async {
-                    if let Some(monitor) = &self.key_mouse_monitor {
+                    if let Some(monitor) = &self.key_mouse_monitor.as_ref() {
                         if monitor.is_sleep().await {
                             if !last_is_sleep {
                                 if let Err(e) = self.pause().await {
