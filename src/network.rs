@@ -117,10 +117,9 @@ impl WebDAVClient {
     /// * `path` - A String representing the directory path to count files in.
     ///
     /// # Returns
-    #[allow(dead_code)]
     pub async fn count_files(&self, path: String) -> Result<usize> {
-        let entries = self.client.list(&path, Depth::Number(0)).await?;
-        Ok(entries.len())
+        let entries = self.client.list(&path, Depth::Number(1)).await?;
+        Ok(entries.len().saturating_sub(1))
     }
 
     /// Fetches the latest file from the specified directory on the WebDAV server.
@@ -184,6 +183,36 @@ impl WebDAVClient {
                 _ => None,
             })
             .max_by_key(|file| file.last_modified)
+            .ok_or_else(|| anyhow::anyhow!("No files found"))?;
+
+        let meta = FileMetadata::from_list_file(&list_file, &self.client.host);
+        Ok(meta)
+    }
+
+    /// Fetches the metadata of the oldest file from the specified directory on the WebDAV server.
+    ///
+    /// # Arguments
+    ///
+    /// * `dir` - A String representing the directory path to search for files.
+    ///
+    /// # Returns
+    ///
+    /// Returns a Result containing the metadata of the oldest file.
+    ///
+    /// # Errors
+    ///
+    /// This function will return an error if:
+    /// * The WebDAV list operation fails.
+    /// * No files are found in the specified directory.
+    pub async fn fetch_oldest_file_meta(&self, dir: String) -> Result<FileMetadata> {
+        let entries = self.client.list(&dir, Depth::Number(1)).await?;
+        let list_file = entries
+            .iter()
+            .filter_map(|entity| match entity {
+                ListEntity::File(file) => Some(file),
+                _ => None,
+            })
+            .min_by_key(|file| file.last_modified)
             .ok_or_else(|| anyhow::anyhow!("No files found"))?;
 
         let meta = FileMetadata::from_list_file(&list_file, &self.client.host);

@@ -74,7 +74,9 @@ impl CloudClipboardHandler {
     /// Pushes new content to the cloud clipboard.
     ///
     /// This method uploads the given content to the WebDAV server using the
-    /// configured base path and share code.
+    /// configured base path.
+    ///
+    /// it will delete the oldest file if the number of files exceeds the max_history
     ///
     /// # Arguments
     ///
@@ -89,6 +91,23 @@ impl CloudClipboardHandler {
     /// This function will return an error if the upload to the WebDAV server fails.
     pub async fn push(&self, payload: Payload) -> Result<String, Box<dyn Error>> {
         let path = self.client.upload(self.base_path.clone(), payload).await?;
+        // 删除旧的文件
+        let max_history = CONFIG.read().unwrap().max_history;
+        if let Some(max_history) = max_history {
+            let count = self.client.count_files(self.base_path.clone()).await?;
+            if count > max_history as usize {
+                let oldest_file = self
+                    .client
+                    .fetch_oldest_file_meta(self.base_path.clone())
+                    .await?;
+                self.client.delete(oldest_file.get_path()).await?;
+                debug!(
+                    "Delete oldest file, path: {}, count: {}",
+                    oldest_file.get_path(),
+                    count
+                );
+            }
+        }
         Ok(path)
     }
 
