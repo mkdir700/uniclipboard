@@ -8,9 +8,11 @@ use tokio::sync::{mpsc, RwLock};
 use tokio::time::sleep;
 
 use crate::clipboard_handler::LocalClipboard;
-use crate::key_mouse_monitor::{self, KeyMouseMonitor};
+use crate::key_mouse_monitor::KeyMouseMonitor;
 use crate::message::Payload;
 use crate::remote_sync::manager::RemoteSyncManager;
+use crate::remote_sync::{RemoteClipboardSync, WebDavSync, WebSocketSync};
+use crate::WebDAVClient;
 
 pub struct UniClipboard {
     clipboard: Arc<LocalClipboard>,
@@ -209,5 +211,65 @@ impl UniClipboard {
         self.stop().await?;
         info!("剪贴板同步已停止");
         Ok(())
+    }
+}
+
+pub struct UniClipboardBuilder {
+    clipboard: Option<LocalClipboard>,
+    remote_sync: Option<Arc<dyn RemoteClipboardSync>>,
+    key_mouse_monitor: Option<KeyMouseMonitor>,
+}
+
+impl UniClipboardBuilder {
+    pub fn new() -> Self {
+        Self {
+            clipboard: None,
+            remote_sync: None,
+            key_mouse_monitor: None,
+        }
+    }
+
+    #[allow(dead_code)]
+    pub fn set_key_mouse_monitor(mut self, key_mouse_monitor: KeyMouseMonitor) -> Self {
+        self.key_mouse_monitor = Some(key_mouse_monitor);
+        self
+    }
+
+    pub fn set_local_clipboard(mut self, clipboard: LocalClipboard) -> Self {
+        self.clipboard = Some(clipboard);
+        self
+    }
+
+    pub fn set_websocket_sync(mut self, is_server: bool) -> Self {
+        self.remote_sync = Some(Arc::new(WebSocketSync::new(is_server)));
+        self
+    }
+    
+    #[allow(dead_code)]
+    pub fn set_webdav_sync(mut self, webdav_client: WebDAVClient) -> Self {
+        self.remote_sync = Some(Arc::new(WebDavSync::new(webdav_client)));
+        self
+    }
+
+    pub async fn build(self) -> Result<UniClipboard> {
+        let clipboard = if let Some(clipboard) = self.clipboard {
+            clipboard
+        } else {
+            return Err(anyhow::anyhow!("No local clipboard enabled"));
+        };
+        let remote_sync = if let Some(remote_sync) = self.remote_sync {
+            remote_sync
+        } else {
+            return Err(anyhow::anyhow!("No remote sync enabled"));
+        };
+        let remote_sync_manager = RemoteSyncManager::new();
+        remote_sync_manager.set_sync_handler(remote_sync).await;
+
+        let app = UniClipboard::new(clipboard, remote_sync_manager, self.key_mouse_monitor);
+        match app.start().await {
+            Ok(_) => info!("UniClipboard started successfully"),
+            Err(e) => error!("Failed to start UniClipboard: {}", e),
+        }
+        Ok(app)
     }
 }
