@@ -44,6 +44,12 @@ impl WebDavSync {
     pub fn get_client(&self) -> Arc<WebDAVClient> {
         Arc::clone(&self.client)
     }
+
+    /// 推送并返回文件路径
+    pub async fn push_and_return_path(&self, payload: Payload) -> Result<String> {
+        let path = self.client.upload(self.base_path.clone(), payload).await?;
+        Ok(path)
+    }
 }
 
 #[async_trait]

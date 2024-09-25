@@ -19,7 +19,7 @@ pub struct Args {
     pub webdav_password: Option<String>,
 
     #[arg(short = 's', long)]
-    pub server: Option<bool>, // 是否作为 server 端
+    pub server: bool,
 
     #[arg(short = 'i', long)]
     pub server_ip: Option<String>,

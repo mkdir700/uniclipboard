@@ -37,9 +37,9 @@ async fn create_webdav_client() -> Result<WebDAVClient> {
     setup();
     let config = CONFIG.read().unwrap();
     WebDAVClient::new(
-        config.webdav_url.unwrap().clone(),
-        config.username.unwrap().clone(),
-        config.password.unwrap().clone(),
+        config.webdav_url.as_ref().unwrap().clone(),
+        config.username.as_ref().unwrap().clone(),
+        config.password.as_ref().unwrap().clone(),
     )
     .await
 }
@@ -57,7 +57,7 @@ async fn test_cloud_clipboard_push_text() {
         Utc::now(),
     );
 
-    let result = handler.push(payload).await;
+    let result = handler.push_and_return_path(payload).await;
     assert!(result.is_ok());
     let path = result.unwrap();
     let client_clone = handler.get_client();
@@ -65,7 +65,7 @@ async fn test_cloud_clipboard_push_text() {
         .fetch_latest_file_meta(handler.base_path.clone())
         .await
         .unwrap();
-    assert_eq!(meta.get_path(), path);
+    assert_eq!(meta.get_path(), path.to_string());
 
     client_clone.delete(path).await.unwrap();
 }
@@ -87,7 +87,7 @@ async fn test_cloud_clipboard_push_image() {
         100,
     );
 
-    let result = handler.push(payload).await;
+    let result = handler.push_and_return_path(payload).await;
     assert!(result.is_ok());
     let path = result.unwrap();
     let client_clone = handler.get_client();
@@ -200,16 +200,16 @@ async fn test_push_and_pull_image() -> Result<(), Box<dyn std::error::Error>> {
 
     // 创建 CloudClipboardHandler
     let client = WebDAVClient::new(
-        CONFIG.read().unwrap().get_webdav_url(),
-        CONFIG.read().unwrap().get_username(),
-        CONFIG.read().unwrap().get_password(),
+        CONFIG.read().unwrap().webdav_url.as_ref().unwrap().clone(),
+        CONFIG.read().unwrap().username.as_ref().unwrap().clone(),
+        CONFIG.read().unwrap().password.as_ref().unwrap().clone(),
     )
     .await?;
     let cloud_handler = WebDavSync::new(client);
     let local_handler = LocalClipboard::new();
 
     // 2. 将图片 push 到云端
-    let path = cloud_handler.push(original_payload.clone()).await?;
+    let path = cloud_handler.push_and_return_path(original_payload.clone()).await?;
     println!("上传后的文件路径: {}", path);
 
     // 3. 从云端 pull 到本地
