@@ -9,15 +9,14 @@ use std::fs;
 use std::path::PathBuf;
 use std::sync::Once;
 use std::time::Duration;
+use uniclipboard::remote_sync::traits::RemoteClipboardSync;
+use uniclipboard::remote_sync::webdav_handler::WebDavSync;
 use uniclipboard::{
     config::{Config, CONFIG},
     message::Payload,
     network::WebDAVClient,
     LocalClipboard,
 };
-use uniclipboard::remote_sync::webdav_handler::WebDavSync;
-use uniclipboard::remote_sync::traits::RemoteClipboardSync;
-
 
 static INIT: Once = Once::new();
 
@@ -25,7 +24,7 @@ fn setup() {
     INIT.call_once(|| {
         dotenv().ok();
         let mut test_config = Config::default();
-        test_config.device_id =  "test-device".to_string();
+        test_config.device_id = "test-device".to_string();
         test_config.webdav_url = Some(env::var("WEBDAV_URL").expect("WEBDAV_URL not set"));
         test_config.username = Some(env::var("WEBDAV_USERNAME").expect("WEBDAV_USERNAME not set"));
         test_config.password = Some(env::var("WEBDAV_PASSWORD").expect("WEBDAV_PASSWORD not set"));
@@ -209,7 +208,9 @@ async fn test_push_and_pull_image() -> Result<(), Box<dyn std::error::Error>> {
     let local_handler = LocalClipboard::new();
 
     // 2. 将图片 push 到云端
-    let path = cloud_handler.push_and_return_path(original_payload.clone()).await?;
+    let path = cloud_handler
+        .push_and_return_path(original_payload.clone())
+        .await?;
     println!("上传后的文件路径: {}", path);
 
     // 3. 从云端 pull 到本地
