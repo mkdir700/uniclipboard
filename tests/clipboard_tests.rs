@@ -1,18 +1,14 @@
 use bytes::Bytes;
 use chrono::Utc;
-use lazy_static::lazy_static;
-use std::sync::Mutex;
+use serial_test::serial;
 use std::time::Duration;
 use tokio::time::timeout;
 use uniclipboard::{LocalClipboardHandler, Payload};
 
-lazy_static! {
-    static ref CLIPBOARD_MUTEX: Mutex<()> = Mutex::new(());
-}
-
 #[tokio::test]
+#[cfg_attr(not(feature = "clipboard_tests"), ignore)]
+#[serial]
 async fn test_local_clipboard_write_and_read() {
-    let _lock = CLIPBOARD_MUTEX.lock().unwrap();
     let handler = LocalClipboardHandler::new();
 
     // 准备测试数据
@@ -32,8 +28,9 @@ async fn test_local_clipboard_write_and_read() {
 }
 
 #[tokio::test]
+#[cfg_attr(not(feature = "clipboard_tests"), ignore)]
+#[serial]
 async fn test_local_clipboard_pull() {
-    let _lock = CLIPBOARD_MUTEX.lock().unwrap();
     let handler = LocalClipboardHandler::new();
 
     // 准备初始测试数据
@@ -66,8 +63,9 @@ async fn test_local_clipboard_pull() {
 }
 
 #[tokio::test]
+#[cfg_attr(not(feature = "clipboard_tests"), ignore)]
+#[serial]
 async fn test_local_clipboard_pull_no_change() {
-    let _lock = CLIPBOARD_MUTEX.lock().unwrap();
     let handler = LocalClipboardHandler::new();
 
     // 设置初始内容

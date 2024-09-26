@@ -46,6 +46,7 @@ impl FileMetadata {
         self.last_modified > other.last_modified
     }
 
+    #[allow(dead_code)]
     pub fn get_content_hash(&self) -> Option<String> {
         let name_parts: Vec<&str> = self.name.split('_').collect();
         if name_parts.len() >= 2 {

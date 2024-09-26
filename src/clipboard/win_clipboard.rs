@@ -1,15 +1,45 @@
 use super::traits::ClipboardOperations;
 use crate::{image::PlatformImage, message::Payload};
-use anyhow::Result;
+use anyhow::{anyhow, Result};
 use arboard::Clipboard;
-use clipboard_win::{formats, set_clipboard};
+use clipboard_win::{empty, formats, get_clipboard, set_clipboard};
+use image::DynamicImage;
 use std::sync::{Arc, Mutex};
+use winapi::um::winuser::{CloseClipboard, OpenClipboard};
 
 pub struct WinClipboard(Arc<Mutex<Clipboard>>);
 
 impl WinClipboard {
     pub fn new() -> Result<Self> {
         Ok(Self(Arc::new(Mutex::new(Clipboard::new()?))))
+    }
+
+    #[allow(dead_code)]
+    fn ensure_clipboard_open() -> Result<()> {
+        unsafe {
+            if OpenClipboard(std::ptr::null_mut()) == 0 {
+                return Err(anyhow!("Failed to open clipboard"));
+            }
+        }
+        Ok(())
+    }
+
+    #[allow(dead_code)]
+    fn ensure_clipboard_closed() -> Result<()> {
+        unsafe {
+            if CloseClipboard() == 0 {
+                return Err(anyhow!("Failed to close clipboard"));
+            }
+        }
+        Ok(())
+    }
+
+    #[allow(dead_code)]
+    fn empty_clipboard() -> Result<()> {
+        if empty().is_err() {
+            return Err(anyhow!("Failed to empty clipboard"));
+        }
+        Ok(())
     }
 }
 
@@ -18,16 +48,35 @@ impl ClipboardOperations for WinClipboard {
         self.0.clone()
     }
 
+    fn read_image(&self) -> Result<DynamicImage> {
+        let _clipboard = WinClipboard::new()?;
+        match get_clipboard(formats::Bitmap) {
+            Ok(data) => {
+                let img = image::load_from_memory(&data)
+                    .expect("Failed to load image from clipboard data");
+                Ok(img)
+            }
+            Err(e) => Err(anyhow!("Failed to read image: {}", e)),
+        }
+    }
+
     fn write_image(&self, image: &PlatformImage) -> Result<()> {
+        Self::ensure_clipboard_open()?;
+        // https://learn.microsoft.com/en-us/windows/win32/dataxchg/clipboard-operations#clipboard-ownership
+        // when it calls the EmptyClipboard function.
+        // The window remains the clipboard owner
+        // until it is closed or another window empties the clipboard.
+        Self::empty_clipboard()?;
         let image_data = image.to_vec();
-        set_clipboard(formats::Bitmap, &image_data)
-            .map_err(|e| anyhow::anyhow!("Failed to write image: {}", e))
+        let result = set_clipboard(formats::Bitmap, &image_data)
+            .map_err(|e| anyhow!("Failed to write image: {}", e));
+        result
     }
 
     fn write(&self, payload: Payload) -> Result<()> {
         match payload {
             Payload::Image(img) => {
-                let image_data = PlatformImage::from_bytes(&img.content);
+                let image_data = PlatformImage::from_bytes(&img.content)?;
                 self.write_image(&image_data)
             }
             Payload::Text(text) => {

@@ -120,7 +120,7 @@ impl Payload {
     pub fn is_image(&self) -> bool {
         matches!(self, Payload::Image(_))
     }
-    
+
     #[allow(dead_code)]
     pub fn as_image(&self) -> Option<&ImagePayload> {
         if let Payload::Image(image) = self {
@@ -137,6 +137,8 @@ impl Payload {
     }
 
     pub fn eq(&self, other: &Payload) -> bool {
+        // TODO: 使用更高效的方式比较两个 Payload 是否相等
+        //  比如对于图片类型，比较图片的大小、格式、尺寸等
         self.hash() == other.hash()
     }
 
@@ -144,7 +146,6 @@ impl Payload {
         serde_json::to_string(self).unwrap()
     }
 }
-
 
 impl fmt::Display for Payload {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {

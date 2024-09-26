@@ -15,11 +15,14 @@ pub struct Config {
     pub webdav_url: String,
     pub username: String,
     pub password: String,
+    pub max_history: Option<u64>,
     pub push_interval: Option<u64>, // ms
     pub pull_interval: Option<u64>, // ms
     pub sync_interval: Option<u64>, // ms
     pub enable_push: Option<bool>,
     pub enable_pull: Option<bool>,
+    pub enable_key_mouse_monitor: Option<bool>,
+    pub key_mouse_monitor_sleep_timeout: Option<u64>, // ms
 }
 
 fn generate_device_id() -> String {
@@ -33,6 +36,7 @@ impl Config {
         Self {
             device_id: generate_device_id(),
             webdav_url: String::new(),
+            max_history: Some(10),
             username: String::new(),
             password: String::new(),
             push_interval: Some(500),
@@ -40,15 +44,28 @@ impl Config {
             sync_interval: Some(500),
             enable_push: Some(true),
             enable_pull: Some(true),
+            enable_key_mouse_monitor: Some(true),
+            key_mouse_monitor_sleep_timeout: Some(5000),
+        }
+    }
+
+    pub fn merge_with_default(&mut self) {
+        let default_config = Config::default();
+        if self.enable_key_mouse_monitor.is_none() {
+            self.enable_key_mouse_monitor = default_config.enable_key_mouse_monitor;
+        }
+        if self.key_mouse_monitor_sleep_timeout.is_none() {
+            self.key_mouse_monitor_sleep_timeout = default_config.key_mouse_monitor_sleep_timeout;
         }
     }
 
     pub fn load() -> Result<Self> {
         let config_path = get_config_path()?;
         if let Some(config_str) = fs::read_to_string(&config_path).ok() {
-            let config: Config =
+            let mut config: Config =
                 toml::from_str(&config_str).with_context(|| "Could not parse config file")?;
-            *CONFIG.write().unwrap() = config.clone();
+            config.merge_with_default();
+            CONFIG.write().unwrap().clone_from(&config);
             Ok(config)
         } else {
             Ok(Config::default())
@@ -56,6 +73,9 @@ impl Config {
     }
 
     pub fn save(&self) -> Result<()> {
+        if self.max_history.is_none() || self.max_history.unwrap() <= 1 {
+            anyhow::bail!("max_history must be greater than 1");
+        }
         let config_path = get_config_path()?;
         let config_str = toml::to_string(self)?;
         fs::create_dir_all(config_path.parent().unwrap())?;
@@ -82,7 +102,7 @@ impl Config {
     }
 }
 
-pub fn get_config_path() -> anyhow::Result<PathBuf> {
+pub fn get_config_path() -> Result<PathBuf> {
     if let Ok(path) = env::var("UNICLIPBOARD_CONFIG_PATH") {
         return Ok(PathBuf::from(path));
     }
