@@ -17,7 +17,7 @@ pub struct Config {
     pub webdav_url: Option<String>,
     pub username: Option<String>,
     pub password: Option<String>,
-    pub max_history: Option<u64>,
+    pub max_history_size: Option<u64>,
     pub push_interval: Option<u64>, // ms
     pub pull_interval: Option<u64>, // ms
     pub sync_interval: Option<u64>, // ms
@@ -52,7 +52,7 @@ impl Config {
             username: None,
             password: None,
             enable_webdav: Some(false),
-            max_history: Some(10),
+            max_history_size: Some(10),
             push_interval: Some(500),
             pull_interval: Some(500),
             sync_interval: Some(500),
@@ -101,6 +101,9 @@ impl Config {
         if self.connect_websocket_server_port.is_none() {
             self.connect_websocket_server_port = default_config.connect_websocket_server_port;
         }
+        if self.max_history_size.is_none() {
+            self.max_history_size = default_config.max_history_size;
+        }
     }
 
     pub fn load() -> Result<Self> {
@@ -117,7 +120,7 @@ impl Config {
     }
 
     pub fn save(&self) -> Result<()> {
-        if self.max_history.is_none() || self.max_history.unwrap() <= 1 {
+        if self.max_history_size.is_none() || self.max_history_size.unwrap() <= 1 {
             anyhow::bail!("max_history must be greater than 1");
         }
         let config_path = get_config_path()?;

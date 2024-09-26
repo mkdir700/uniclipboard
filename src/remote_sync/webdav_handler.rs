@@ -102,7 +102,7 @@ impl RemoteClipboardSync for WebDavSync {
     async fn push(&self, payload: Payload) -> Result<()> {
         let _path = self.client.upload(self.base_path.clone(), payload).await?;
         // 删除旧的文件
-        let max_history = CONFIG.read().unwrap().max_history;
+        let max_history = CONFIG.read().unwrap().max_history_size;
         if let Some(max_history) = max_history {
             let count = self.client.count_files(self.base_path.clone()).await?;
             if count > max_history as usize {
