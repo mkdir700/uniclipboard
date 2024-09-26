@@ -244,7 +244,7 @@ impl UniClipboardBuilder {
         self.remote_sync = Some(Arc::new(WebSocketSync::new(is_server)));
         self
     }
-    
+
     #[allow(dead_code)]
     pub fn set_webdav_sync(mut self, webdav_client: WebDAVClient) -> Self {
         self.remote_sync = Some(Arc::new(WebDavSync::new(webdav_client)));
@@ -265,11 +265,6 @@ impl UniClipboardBuilder {
         let remote_sync_manager = RemoteSyncManager::new();
         remote_sync_manager.set_sync_handler(remote_sync).await;
 
-        let app = UniClipboard::new(clipboard, remote_sync_manager, self.key_mouse_monitor);
-        match app.start().await {
-            Ok(_) => info!("UniClipboard started successfully"),
-            Err(e) => error!("Failed to start UniClipboard: {}", e),
-        }
-        Ok(app)
+        Ok(UniClipboard::new(clipboard, remote_sync_manager, self.key_mouse_monitor))
     }
 }
