@@ -12,6 +12,8 @@ use std::net::SocketAddr;
 use std::sync::Arc;
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::{broadcast, mpsc, Mutex};
+use tokio_tungstenite::connect_async;
+use tokio_tungstenite::tungstenite::http::Uri;
 use tokio_tungstenite::tungstenite::Message;
 use tokio_tungstenite::{accept_async, MaybeTlsStream, WebSocketStream};
 
@@ -32,11 +34,23 @@ pub struct WebSocketServer {
 }
 
 pub struct WebSocketClient {
+    uri: Uri,
     writer: Arc<
-        Mutex<futures_util::stream::SplitSink<WebSocketStream<MaybeTlsStream<TcpStream>>, Message>>,
+        Option<
+            Mutex<
+                futures_util::stream::SplitSink<
+                    WebSocketStream<MaybeTlsStream<TcpStream>>,
+                    Message,
+                >,
+            >,
+        >,
     >,
-    reader:
-        Arc<Mutex<futures_util::stream::SplitStream<WebSocketStream<MaybeTlsStream<TcpStream>>>>>,
+
+    reader: Arc<
+        Option<
+            Mutex<futures_util::stream::SplitStream<WebSocketStream<MaybeTlsStream<TcpStream>>>>,
+        >,
+    >,
 }
 
 impl WebSocketServer {
@@ -222,23 +236,35 @@ impl WebSocketServer {
 }
 
 impl WebSocketClient {
-    pub fn new(ws_stream: WebSocketStream<MaybeTlsStream<TcpStream>>) -> Self {
-        let (write, read) = ws_stream.split();
+    pub fn new(uri: Uri) -> Self {
         WebSocketClient {
-            writer: Arc::new(Mutex::new(write)),
-            reader: Arc::new(Mutex::new(read)),
+            uri,
+            writer: Arc::new(None),
+            reader: Arc::new(None),
         }
     }
 
     pub async fn send(&self, payload: Payload) -> Result<()> {
         let message = serde_json::to_string(&payload)?;
-        let mut writer = self.writer.lock().await;
-        writer.send(Message::Text(message)).await?;
+        if let Some(writer) = self.writer.as_ref() {
+            let mut writer = writer.lock().await;
+            writer.send(Message::Text(message)).await?;
+        } else {
+            return Err(anyhow::anyhow!(
+                "WebSocket error: Not connected, please connect first"
+            ));
+        }
         Ok(())
     }
 
     pub async fn receive(&self) -> Result<Payload> {
-        let mut reader = self.reader.lock().await;
+        let mut reader = if let Some(reader) = self.reader.as_ref() {
+            reader.lock().await
+        } else {
+            return Err(anyhow::anyhow!(
+                "WebSocket error: Not connected, please connect first"
+            ));
+        };
         match reader.next().await {
             Some(Ok(Message::Text(text))) => {
                 let payload: Payload = serde_json::from_str(&text)?;
@@ -250,14 +276,39 @@ impl WebSocketClient {
             _ => Err(anyhow::anyhow!("WebSocket error: _")),
         }
     }
-    pub async fn connect(&self) -> Result<()> {
-        let mut writer = self.writer.lock().await;
+
+    pub async fn connect(&mut self) -> Result<()> {
+        let (ws_stream, _response) = connect_async(self.uri.clone()).await?;
+        let (mut writer, reader) = ws_stream.split();
+
+        // 发送连接消息
         writer.send(Message::Text("connect".to_string())).await?;
+
+        // 更新 writer
+        if let Some(arc_writer) = Arc::get_mut(&mut self.writer) {
+            *arc_writer = Some(Mutex::new(writer));
+        } else {
+            self.writer = Arc::new(Some(Mutex::new(writer)));
+        }
+
+        // 更新 reader
+        if let Some(arc_reader) = Arc::get_mut(&mut self.reader) {
+            *arc_reader = Some(Mutex::new(reader));
+        } else {
+            self.reader = Arc::new(Some(Mutex::new(reader)));
+        }
+
         Ok(())
     }
 
     pub async fn disconnect(&self) -> Result<()> {
-        let mut writer = self.writer.lock().await;
+        let mut writer = if let Some(writer) = self.writer.as_ref() {
+            writer.lock().await
+        } else {
+            return Err(anyhow::anyhow!(
+                "WebSocket error: Not connected, please connect first"
+            ));
+        };
         writer.close().await?;
         Ok(())
     }
@@ -266,7 +317,13 @@ impl WebSocketClient {
         let device_id = CONFIG.read().unwrap().device_id.clone();
         let web_socket_message = WebSocketMessage::Register(Device::new(device_id, None, None));
         let message = serde_json::to_string(&web_socket_message)?;
-        let mut writer = self.writer.lock().await;
+        let mut writer = if let Some(writer) = self.writer.as_ref() {
+            writer.lock().await
+        } else {
+            return Err(anyhow::anyhow!(
+                "WebSocket error: Not connected, please connect first"
+            ));
+        };
         writer.send(Message::Text(message)).await?;
         Ok(())
     }

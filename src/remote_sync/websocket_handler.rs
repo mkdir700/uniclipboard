@@ -134,8 +134,7 @@ impl RemoteClipboardSync for WebSocketSync {
             let uri = format!("ws://{}:{}", connect_server_addr, connect_server_port)
                 .parse::<Uri>()
                 .unwrap();
-            let (ws_stream, _response) = connect_async(uri).await?;
-            *client = Some(WebSocketClient::new(ws_stream));
+            *client = Some(WebSocketClient::new(uri));
             if let Some(c) = client.as_mut() {
                 c.connect().await?;
                 // 向服务端发送注册消息
