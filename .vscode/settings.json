@@ -1,3 +1,3 @@
 {
-    "rust-analyzer.cargo.features": ["clipboard_tests", "hardware_tests", "testing"]
+    "rust-analyzer.cargo.features": ["clipboard_tests", "hardware_tests", "testing", "network_tests"]
 }

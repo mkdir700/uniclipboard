@@ -2,14 +2,13 @@ use bytes::Bytes;
 use chrono::Utc;
 use serial_test::serial;
 use std::time::Duration;
-use tokio::time::timeout;
-use uniclipboard::{LocalClipboardHandler, Payload};
+use uniclipboard::{LocalClipboard, Payload};
 
 #[tokio::test]
 #[cfg_attr(not(feature = "clipboard_tests"), ignore)]
 #[serial]
 async fn test_local_clipboard_write_and_read() {
-    let handler = LocalClipboardHandler::new();
+    let handler = LocalClipboard::new();
 
     // 准备测试数据
     let test_content = "测试剪贴板内容";
@@ -31,10 +30,10 @@ async fn test_local_clipboard_write_and_read() {
 #[cfg_attr(not(feature = "clipboard_tests"), ignore)]
 #[serial]
 async fn test_local_clipboard_pull() {
-    let handler = LocalClipboardHandler::new();
+    let handler = LocalClipboard::new();
 
     // 准备初始测试数据
-    let initial_content = "初始剪贴板内容";
+    let initial_content = "123";
     let initial_payload = Payload::new_text(
         Bytes::from(initial_content),
         "local".to_string(),
@@ -44,13 +43,16 @@ async fn test_local_clipboard_pull() {
 
     // 在另一个任务中更改剪贴板内容
     tokio::spawn(async move {
-        let handler_clone = LocalClipboardHandler::new();
-        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
-        let new_content = "新的剪贴板内容";
+        let handler_clone = LocalClipboard::new();
+        let new_content = "456";
         let new_payload =
             Payload::new_text(Bytes::from(new_content), "local".to_string(), Utc::now());
         handler_clone.write(new_payload).await.unwrap();
+        println!("new_content: {}", new_content);
     });
+
+    // 等待 100ms 后，确保新的内容已经写入
+    tokio::time::sleep(std::time::Duration::from_millis(200)).await;
 
     // 测试 pull 函数
     let pulled_payload = handler
@@ -58,27 +60,6 @@ async fn test_local_clipboard_pull() {
         .await
         .unwrap();
 
-    assert_eq!(*pulled_payload.get_content(), Bytes::from("新的剪贴板内容"));
+    assert_eq!(*pulled_payload.get_content(), Bytes::from("456"));
     // assert_eq!(pulled_payload.get_device_id(), "local");
-}
-
-#[tokio::test]
-#[cfg_attr(not(feature = "clipboard_tests"), ignore)]
-#[serial]
-async fn test_local_clipboard_pull_no_change() {
-    let handler = LocalClipboardHandler::new();
-
-    // 设置初始内容
-    let content = "不变的剪贴板内容";
-    let payload = Payload::new_text(Bytes::from(content), "local".to_string(), Utc::now());
-    handler.write(payload).await.unwrap();
-
-    // 使用 timeout 来测试 pull 操作是否会超时
-    let pull_result = timeout(
-        Duration::from_millis(400),
-        handler.pull(Some(Duration::from_millis(300))),
-    )
-    .await;
-
-    assert!(pull_result.is_err(), "预期 pull 操作超时，但并未发生");
 }

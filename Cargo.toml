@@ -4,7 +4,11 @@ version = "0.1.1"
 edition = "2021"
 
 [profile.release]
-lto = true
+panic = "abort" # Strip expensive panic clean-up logic
+codegen-units = 1 # Compile crates one after another so the compiler can optimize better
+lto = true # Enables link to optimizations
+opt-level = "z" # Optimize for binary size
+strip = true # Remove debug symbols
 
 [features]
 clipboard_tests = []
@@ -15,7 +19,7 @@ testing = []
 
 [dependencies]
 # 网络通信
-tokio = { version = "1", features = ["full"] }
+tokio = { version = "1.28", features = ["full"] }
 tokio-util = { version = "0.7", features = ["codec"] }
 
 # 序列化
@@ -52,6 +56,10 @@ device_query = "2.1.0"
 
 # 加密
 aes-gcm = "0.10.3"
+tokio-tungstenite = "0.19"
+futures-util = "0.3"
+async-trait = "0.1.82"
+futures = "0.3.30"
 
 [target.'cfg(windows)'.dependencies]
 clipboard-win = { version = "5.4.0" }
