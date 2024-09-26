@@ -12,10 +12,12 @@ pub static CONFIG: Lazy<RwLock<Config>> = Lazy::new(|| RwLock::new(Config::defau
 #[derive(Deserialize, Serialize, Debug, Clone)]
 pub struct Config {
     pub device_id: String,
-    pub webdav_url: String,
-    pub username: String,
-    pub password: String,
-    pub max_history: Option<u64>,
+    pub device_name: Option<String>,
+    pub enable_webdav: Option<bool>,
+    pub webdav_url: Option<String>,
+    pub username: Option<String>,
+    pub password: Option<String>,
+    pub max_history_size: Option<u64>,
     pub push_interval: Option<u64>, // ms
     pub pull_interval: Option<u64>, // ms
     pub sync_interval: Option<u64>, // ms
@@ -23,6 +25,16 @@ pub struct Config {
     pub enable_pull: Option<bool>,
     pub enable_key_mouse_monitor: Option<bool>,
     pub key_mouse_monitor_sleep_timeout: Option<u64>, // ms
+    pub enable_websocket: Option<bool>,
+    pub is_server: Option<bool>,
+    // websocket server 的地址
+    pub websocket_server_addr: Option<String>,
+    // websocket server 的端口
+    pub websocket_server_port: Option<u16>,
+    // 用于客户端连接的 websocket server 地址
+    pub connect_websocket_server_addr: Option<String>,
+    // 用于客户端连接的 websocket server 端口
+    pub connect_websocket_server_port: Option<u16>,
 }
 
 fn generate_device_id() -> String {
@@ -35,10 +47,12 @@ impl Config {
     pub fn default() -> Self {
         Self {
             device_id: generate_device_id(),
-            webdav_url: String::new(),
-            max_history: Some(10),
-            username: String::new(),
-            password: String::new(),
+            device_name: Some("未命名设备".to_string()),
+            webdav_url: None,
+            username: None,
+            password: None,
+            enable_webdav: Some(false),
+            max_history_size: Some(10),
             push_interval: Some(500),
             pull_interval: Some(500),
             sync_interval: Some(500),
@@ -46,6 +60,12 @@ impl Config {
             enable_pull: Some(true),
             enable_key_mouse_monitor: Some(true),
             key_mouse_monitor_sleep_timeout: Some(5000),
+            enable_websocket: Some(true),
+            is_server: Some(true),
+            websocket_server_addr: Some("0.0.0.0".to_string()),
+            websocket_server_port: Some(8113),
+            connect_websocket_server_addr: None,
+            connect_websocket_server_port: None,
         }
     }
 
@@ -56,6 +76,33 @@ impl Config {
         }
         if self.key_mouse_monitor_sleep_timeout.is_none() {
             self.key_mouse_monitor_sleep_timeout = default_config.key_mouse_monitor_sleep_timeout;
+        }
+        if self.is_server.is_none() {
+            self.is_server = default_config.is_server;
+        }
+        if self.websocket_server_addr.is_none() {
+            self.websocket_server_addr = default_config.websocket_server_addr;
+        }
+        if self.websocket_server_port.is_none() {
+            self.websocket_server_port = default_config.websocket_server_port;
+        }
+        if self.device_name.is_none() {
+            self.device_name = Some("未命名设备".to_string());
+        }
+        if self.enable_webdav.is_none() {
+            self.enable_webdav = default_config.enable_webdav;
+        }
+        if self.enable_websocket.is_none() {
+            self.enable_websocket = default_config.enable_websocket;
+        }
+        if self.connect_websocket_server_addr.is_none() {
+            self.connect_websocket_server_addr = default_config.connect_websocket_server_addr;
+        }
+        if self.connect_websocket_server_port.is_none() {
+            self.connect_websocket_server_port = default_config.connect_websocket_server_port;
+        }
+        if self.max_history_size.is_none() {
+            self.max_history_size = default_config.max_history_size;
         }
     }
 
@@ -73,7 +120,7 @@ impl Config {
     }
 
     pub fn save(&self) -> Result<()> {
-        if self.max_history.is_none() || self.max_history.unwrap() <= 1 {
+        if self.max_history_size.is_none() || self.max_history_size.unwrap() <= 1 {
             anyhow::bail!("max_history must be greater than 1");
         }
         let config_path = get_config_path()?;
@@ -87,18 +134,6 @@ impl Config {
 
     pub fn get_device_id(&self) -> String {
         self.device_id.clone()
-    }
-
-    pub fn get_webdav_url(&self) -> String {
-        self.webdav_url.clone()
-    }
-
-    pub fn get_username(&self) -> String {
-        self.username.clone()
-    }
-
-    pub fn get_password(&self) -> String {
-        self.password.clone()
     }
 }
 

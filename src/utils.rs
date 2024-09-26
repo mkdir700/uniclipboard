@@ -6,6 +6,12 @@ pub fn string_to_32_bytes(input: &str) -> [u8; 32] {
     hasher.finalize().into()
 }
 
+pub fn generate_device_id() -> String {
+    // 生成6位随机数字
+    let random_number = rand::random::<u32>() % 1000000;
+    format!("{:06}", random_number)
+}
+
 // // 使用示例
 // let key_str = "我的密钥";
 // let key_bytes: [u8; 32] = string_to_32_bytes(key_str);

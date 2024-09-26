@@ -6,44 +6,95 @@ fn test_parse_args_with_all_options() {
     let args = Args::parse_from([
         "test",
         "--webdav-url", "https://example.com/webdav",
-        "--username", "testuser",
-        "--password", "testpass"
+        "--webdav-username", "testuser",
+        "--webdav-password", "testpass",
+        "--interactive",
+        "--server",
+        "--server-ip", "192.168.1.100",
+        "--server-port", "8080"
     ]);
 
     assert_eq!(args.webdav_url, Some("https://example.com/webdav".to_string()));
-    assert_eq!(args.username, Some("testuser".to_string()));
-    assert_eq!(args.password, Some("testpass".to_string()));
+    assert_eq!(args.webdav_username, Some("testuser".to_string()));
+    assert_eq!(args.webdav_password, Some("testpass".to_string()));
+    assert!(args.interactive);
+    assert!(args.server);
+    assert_eq!(args.server_ip, Some("192.168.1.100".to_string()));
+    assert_eq!(args.server_port, Some(8080));
 }
 
 #[test]
 fn test_parse_args_with_short_options() {
     let args = Args::parse_from([
         "test",
-        "-w", "https://example.com/webdav",
-        "-u", "testuser",
-        "-p", "testpass"
+        "-s",
+        "-i", "192.168.1.100",
+        "-p", "8080"
     ]);
 
-    assert_eq!(args.webdav_url, Some("https://example.com/webdav".to_string()));
-    assert_eq!(args.username, Some("testuser".to_string()));
-    assert_eq!(args.password, Some("testpass".to_string()));
+    assert!(args.server);
+    assert_eq!(args.server_ip, Some("192.168.1.100".to_string()));
+    assert_eq!(args.server_port, Some(8080));
 }
 
 #[test]
-fn test_parse_args_function() {
-    let args = parse_args_from(vec![
-        "test".to_string(),
-        "--webdav-url".to_string(), "https://example.com/webdav".to_string(),
-        "--username".to_string(), "testuser".to_string(),
-        "--password".to_string(), "testpass".to_string()
+fn test_parse_args_with_no_options() {
+    let args = Args::parse_from(["test"]);
+
+    assert_eq!(args.webdav_url, None);
+    assert_eq!(args.webdav_username, None);
+    assert_eq!(args.webdav_password, None);
+    assert!(!args.interactive);
+    assert!(!args.server);
+    assert_eq!(args.server_ip, None);
+    assert_eq!(args.server_port, None);
+}
+
+#[test]
+fn test_parse_args_with_interactive_only() {
+    let args = Args::parse_from(["test", "--interactive"]);
+
+    assert!(args.interactive);
+    assert_eq!(args.webdav_url, None);
+    assert_eq!(args.webdav_username, None);
+    assert_eq!(args.webdav_password, None);
+    assert!(!args.server);
+    assert_eq!(args.server_ip, None);
+    assert_eq!(args.server_port, None);
+}
+
+#[test]
+fn test_parse_args_with_server_only() {
+    let args = Args::parse_from(["test", "--server"]);
+
+    assert!(args.server);
+    assert!(!args.interactive);
+    assert_eq!(args.webdav_url, None);
+    assert_eq!(args.webdav_username, None);
+    assert_eq!(args.webdav_password, None);
+    assert_eq!(args.server_ip, None);
+    assert_eq!(args.server_port, None);
+}
+
+#[test]
+fn test_parse_args_with_webdav_only() {
+    let args = Args::parse_from([
+        "test",
+        "--webdav-url", "https://example.com/webdav",
+        "--webdav-username", "testuser",
+        "--webdav-password", "testpass"
     ]);
 
     assert_eq!(args.webdav_url, Some("https://example.com/webdav".to_string()));
-    assert_eq!(args.username, Some("testuser".to_string()));
-    assert_eq!(args.password, Some("testpass".to_string()));
+    assert_eq!(args.webdav_username, Some("testuser".to_string()));
+    assert_eq!(args.webdav_password, Some("testpass".to_string()));
+    assert!(!args.interactive);
+    assert!(!args.server);
+    assert_eq!(args.server_ip, None);
+    assert_eq!(args.server_port, None);
 }
 
-// 添加这个辅助函数用于测试
-fn parse_args_from(args: Vec<String>) -> Args {
-    Args::parse_from(args)
-}
+// 移除这个辅助函数，因为我们不再需要它
+// fn parse_args_from(args: Vec<String>) -> Args {
+//     Args::parse_from(args)
+// }

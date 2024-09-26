@@ -2,7 +2,7 @@ use serial_test::serial;
 use std::env;
 use std::fs;
 use tempfile::tempdir;
-use uniclipboard::config::{get_config_path, Config, CONFIG};
+use uniclipboard::config::{get_config_path, Config};
 
 #[test]
 #[serial]
@@ -13,23 +13,49 @@ fn test_load_config() {
     let config_path = config_dir.join("config.toml");
     let config_content = r#"
         device_id = "test_device"
+        device_name = "测试设备"
         webdav_url = "https://example.com/webdav"
         username = "testuser"
         password = "testpass"
+        enable_webdav = true
+        push_interval = 1000
+        pull_interval = 1000
+        sync_interval = 1000
+        enable_push = true
+        enable_pull = true
+        enable_key_mouse_monitor = true
+        key_mouse_monitor_sleep_timeout = 6000
+        enable_websocket = true
+        is_server = false
+        websocket_server_addr = "127.0.0.1"
+        websocket_server_port = 8114
+        connect_websocket_server_addr = "example.com"
+        connect_websocket_server_port = 8115
     "#;
     fs::write(&config_path, config_content).unwrap();
 
-    env::set_var("HOME", temp_dir.path());
-
-    // 重写 get_config_path 函数以返回正确的测试配置路径
     env::set_var("UNICLIPBOARD_CONFIG_PATH", config_path.to_str().unwrap());
 
-    Config::load().unwrap();
-    let config = CONFIG.read().unwrap();
+    let config = Config::load().unwrap();
     assert_eq!(config.device_id, "test_device");
-    assert_eq!(config.webdav_url, "https://example.com/webdav");
-    assert_eq!(config.username, "testuser");
-    assert_eq!(config.password, "testpass");
+    assert_eq!(config.device_name, Some("测试设备".to_string()));
+    assert_eq!(config.webdav_url, Some("https://example.com/webdav".to_string()));
+    assert_eq!(config.username, Some("testuser".to_string()));
+    assert_eq!(config.password, Some("testpass".to_string()));
+    assert_eq!(config.enable_webdav, Some(true));
+    assert_eq!(config.push_interval, Some(1000));
+    assert_eq!(config.pull_interval, Some(1000));
+    assert_eq!(config.sync_interval, Some(1000));
+    assert_eq!(config.enable_push, Some(true));
+    assert_eq!(config.enable_pull, Some(true));
+    assert_eq!(config.enable_key_mouse_monitor, Some(true));
+    assert_eq!(config.key_mouse_monitor_sleep_timeout, Some(6000));
+    assert_eq!(config.enable_websocket, Some(true));
+    assert_eq!(config.is_server, Some(false));
+    assert_eq!(config.websocket_server_addr, Some("127.0.0.1".to_string()));
+    assert_eq!(config.websocket_server_port, Some(8114));
+    assert_eq!(config.connect_websocket_server_addr, Some("example.com".to_string()));
+    assert_eq!(config.connect_websocket_server_port, Some(8115));
 }
 
 #[test]
@@ -40,26 +66,53 @@ fn test_save_config() {
     fs::create_dir_all(&config_dir).unwrap();
     let config_path = config_dir.join("config.toml");
 
-    // 设置环境变量
-    env::set_var("HOME", temp_dir.path());
     env::set_var("UNICLIPBOARD_CONFIG_PATH", config_path.to_str().unwrap());
 
     let mut config = Config::default();
     config.device_id = "save_test_device".to_string();
-    config.webdav_url = "https://save.example.com/webdav".to_string();
-    config.username = "save_testuser".to_string();
-    config.password = "save_testpass".to_string();
+    config.device_name = Some("保存测试设备".to_string());
+    config.webdav_url = Some("https://save.example.com/webdav".to_string());
+    config.username = Some("save_testuser".to_string());
+    config.password = Some("save_testpass".to_string());
+    config.enable_webdav = Some(true);
+    config.push_interval = Some(2000);
+    config.pull_interval = Some(2000);
+    config.sync_interval = Some(2000);
+    config.enable_push = Some(false);
+    config.enable_pull = Some(false);
+    config.enable_key_mouse_monitor = Some(false);
+    config.key_mouse_monitor_sleep_timeout = Some(7000);
+    config.enable_websocket = Some(false);
+    config.is_server = Some(true);
+    config.websocket_server_addr = Some("192.168.1.100".to_string());
+    config.websocket_server_port = Some(8116);
+    config.connect_websocket_server_addr = Some("connect.example.com".to_string());
+    config.connect_websocket_server_port = Some(8117);
 
     config.save().unwrap();
 
-    // 确保配置文件已经被创建
     assert!(config_path.exists());
 
-    let saved_config = CONFIG.read().unwrap();
+    let saved_config = Config::load().unwrap();
     assert_eq!(saved_config.device_id, "save_test_device");
-    assert_eq!(saved_config.webdav_url, "https://save.example.com/webdav");
-    assert_eq!(saved_config.username, "save_testuser");
-    assert_eq!(saved_config.password, "save_testpass");
+    assert_eq!(saved_config.device_name, Some("保存测试设备".to_string()));
+    assert_eq!(saved_config.webdav_url, Some("https://save.example.com/webdav".to_string()));
+    assert_eq!(saved_config.username, Some("save_testuser".to_string()));
+    assert_eq!(saved_config.password, Some("save_testpass".to_string()));
+    assert_eq!(saved_config.enable_webdav, Some(true));
+    assert_eq!(saved_config.push_interval, Some(2000));
+    assert_eq!(saved_config.pull_interval, Some(2000));
+    assert_eq!(saved_config.sync_interval, Some(2000));
+    assert_eq!(saved_config.enable_push, Some(false));
+    assert_eq!(saved_config.enable_pull, Some(false));
+    assert_eq!(saved_config.enable_key_mouse_monitor, Some(false));
+    assert_eq!(saved_config.key_mouse_monitor_sleep_timeout, Some(7000));
+    assert_eq!(saved_config.enable_websocket, Some(false));
+    assert_eq!(saved_config.is_server, Some(true));
+    assert_eq!(saved_config.websocket_server_addr, Some("192.168.1.100".to_string()));
+    assert_eq!(saved_config.websocket_server_port, Some(8116));
+    assert_eq!(saved_config.connect_websocket_server_addr, Some("connect.example.com".to_string()));
+    assert_eq!(saved_config.connect_websocket_server_port, Some(8117));
 }
 
 #[test]
