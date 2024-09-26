@@ -4,6 +4,7 @@ use crate::{message::Payload, network::WebDAVClient};
 use anyhow::Result;
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
+use log::debug;
 use std::sync::Arc;
 use std::sync::RwLock;
 use tokio::sync::Mutex as TokioMutex;
@@ -100,6 +101,23 @@ impl RemoteClipboardSync for WebDavSync {
     /// This function will return an error if the upload to the WebDAV server fails.
     async fn push(&self, payload: Payload) -> Result<()> {
         let _path = self.client.upload(self.base_path.clone(), payload).await?;
+        // 删除旧的文件
+        let max_history = CONFIG.read().unwrap().max_history;
+        if let Some(max_history) = max_history {
+            let count = self.client.count_files(self.base_path.clone()).await?;
+            if count > max_history as usize {
+                let oldest_file = self
+                    .client
+                    .fetch_oldest_file_meta(self.base_path.clone())
+                    .await?;
+                self.client.delete(oldest_file.get_path()).await?;
+                debug!(
+                    "Delete oldest file, path: {}, count: {}",
+                    oldest_file.get_path(),
+                    count
+                );
+            }
+        }
         Ok(())
     }
 
