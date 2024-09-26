@@ -11,7 +11,6 @@ use log::info;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::RwLock;
-use tokio_tungstenite::connect_async;
 use tokio_tungstenite::tungstenite::http::Uri;
 
 pub struct WebSocketSync {
@@ -97,12 +96,25 @@ impl RemoteClipboardSync for WebSocketSync {
                 Err(anyhow::anyhow!("No payload received"))
             }
         } else {
-            let client = self.client.read().await;
-            if let Some(c) = client.as_ref() {
-                c.receive().await
-            } else {
-                Err(anyhow::anyhow!("Client not connected"))
+            let result = {
+                let client = self.client.read().await;
+                if let Some(c) = client.as_ref() {
+                    c.receive().await
+                } else {
+                    Err(anyhow::anyhow!("Client not connected"))
+                }
+            };
+
+            if let Err(ref _e) = result {
+                let mut client = self.client.write().await;
+                if let Some(c) = client.as_mut() {
+                    // 重新连接
+                    c.connect().await?;
+                    c.register().await?;
+                }
             }
+
+            result
         }
     }
 
