@@ -3,7 +3,6 @@ pub mod clipboard;
 pub mod clipboard_handler;
 pub mod config;
 pub mod file_metadata;
-mod image;
 pub mod remote_sync;
 pub mod device;
 
@@ -17,7 +16,6 @@ pub use cli::{parse_args, Args};
 pub use clipboard_handler::LocalClipboard;
 pub use config::{get_config_path, Config, CONFIG};
 pub use file_metadata::FileMetadata;
-pub use image::PlatformImage;
 pub use message::Payload;
 pub use network::WebDAVClient;
 pub use key_mouse_monitor::KeyMouseMonitor;

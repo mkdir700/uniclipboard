@@ -5,7 +5,6 @@ mod config;
 mod device;
 mod encrypt;
 mod file_metadata;
-mod image;
 mod key_mouse_monitor;
 mod message;
 mod network;

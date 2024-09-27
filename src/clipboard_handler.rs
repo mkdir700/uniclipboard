@@ -1,29 +1,42 @@
-use crate::clipboard::create_clipboard;
-use crate::clipboard::traits::ClipboardOperations;
+use crate::clipboard::{RsClipboard, RsClipboardChangeHandler};
 use crate::message::Payload;
 use anyhow::Result;
+use clipboard_rs::WatcherShutdown;
+use clipboard_rs::{ClipboardWatcher, ClipboardWatcherContext};
 use log::debug;
 use log::error;
-use std::sync::Arc;
-use tokio::sync::mpsc;
+use std::sync::{Arc, Mutex};
+use std::thread;
 use tokio::sync::Mutex as TokioMutex;
+use tokio::sync::{mpsc, Notify};
 use tokio::time::{sleep, Duration, Instant};
 
 pub struct LocalClipboard {
     last_content_hash: Arc<TokioMutex<Option<String>>>,
-    factory: Arc<dyn ClipboardOperations>,
+    rs_clipboard: Arc<RsClipboard>,
     paused: Arc<TokioMutex<bool>>,
     stopped: Arc<TokioMutex<bool>>,
+    watcher: Arc<Mutex<ClipboardWatcherContext<RsClipboardChangeHandler>>>,
+    watcher_shutdown: Arc<TokioMutex<Option<WatcherShutdown>>>,
 }
 
 impl LocalClipboard {
     pub fn new() -> Self {
-        let factory = create_clipboard().unwrap();
+        let notify = Arc::new(Notify::new());
+        let rs_clipboard = RsClipboard::new(notify.clone()).unwrap();
+        let clipboard_change_handler = RsClipboardChangeHandler::new(notify);
+        let mut watcher: ClipboardWatcherContext<RsClipboardChangeHandler> =
+            ClipboardWatcherContext::new().unwrap();
+        let watcher_shutdown = watcher
+            .add_handler(clipboard_change_handler)
+            .get_shutdown_channel();
         Self {
             last_content_hash: Arc::new(TokioMutex::new(None)),
-            factory,
+            rs_clipboard: Arc::new(rs_clipboard),
             paused: Arc::new(TokioMutex::new(false)),
             stopped: Arc::new(TokioMutex::new(false)),
+            watcher: Arc::new(Mutex::new(watcher)),
+            watcher_shutdown: Arc::new(TokioMutex::new(Some(watcher_shutdown))),
         }
     }
 
@@ -38,11 +51,11 @@ impl LocalClipboard {
     }
 
     pub async fn read(&self) -> Result<Payload> {
-        self.factory.read()
+        self.rs_clipboard.read()
     }
 
     pub async fn write(&self, payload: Payload) -> Result<()> {
-        self.factory.write(payload)
+        self.rs_clipboard.write(payload)
     }
 
     pub async fn pull(&self, timeout: Option<Duration>) -> Result<Payload> {
@@ -82,24 +95,34 @@ impl LocalClipboard {
 
     pub async fn start_monitoring(self: &Arc<Self>) -> Result<mpsc::Receiver<Payload>> {
         let (tx, rx) = mpsc::channel(100);
-        let clipboard = Arc::clone(self);
+        let c = Arc::clone(self);
+        let rs_clipboard = Arc::clone(&c.rs_clipboard);
+        let watcher = Arc::clone(&c.watcher);
 
+        // 在后台线程中启动剪贴板监听
+        thread::spawn(move || {
+            let mut watcher = watcher.lock().expect("Failed to lock watcher");
+            debug!("Start watching clipboard");
+            watcher.start_watch();
+        });
+
+        // 在异步任务中处理剪贴板变化
         tokio::spawn(async move {
-            let mut last_content_hash: Option<String> = None;
             loop {
-                if let Ok(payload) = clipboard.pull(None).await {
-                    // 判断是否为重复的内容
-                    let current_content_hash = payload.hash();
-                    if let Some(ref hash) = last_content_hash {
-                        if hash == &current_content_hash {
-                            continue;
-                        }
-                    }
-                    debug!("Watch new content from local: {}", payload);
+                if *c.stopped.lock().await {
+                    break;
+                }
+
+                if let Err(e) = rs_clipboard.wait_clipboard_change().await {
+                    error!("Wait clipboard change failed: {:?}", e);
+                    continue;
+                }
+
+                if let Ok(payload) = c.pull(None).await {
+                    debug!("Wait clipboard change: {}", payload);
                     if let Err(e) = tx.send(payload).await {
-                        error!("Failed to send payload: {:?}", e);
+                        error!("Send payload failed: {:?}", e);
                     }
-                    last_content_hash = Some(current_content_hash);
                 }
             }
         });
@@ -109,6 +132,9 @@ impl LocalClipboard {
     pub async fn stop_monitoring(&self) -> Result<()> {
         let mut is_stopped = self.stopped.lock().await;
         *is_stopped = true;
+        if let Some(shutdown) = self.watcher_shutdown.lock().await.take() {
+            shutdown.stop();
+        }
         Ok(())
     }
 

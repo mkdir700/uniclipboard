@@ -15,12 +15,16 @@ async fn test_read_image_from_local_clipboard() {
     let handler = LocalClipboard::new();
 
     let payload = handler.read().await.unwrap();
-    if let Payload::Image(image_payload) = payload {
-        println!("size: {} MB", image_payload.size as f32 / 1024.0 / 1024.0);
-        let mut file = File::create("test_image.png").unwrap();
-        file.write_all(&image_payload.content).unwrap();
-    } else {
-        panic!("读取到的 payload 不是图像");
+    // 查看 payload 的类型
+    match payload {
+        Payload::Image(image_payload) => {
+            println!("size: {} MB", image_payload.size as f32 / 1024.0 / 1024.0);
+            let mut file = File::create("test_image.png").unwrap();
+            file.write_all(&image_payload.content).unwrap();
+        }
+        _ => {
+            panic!("读取到的 payload 不是图像");
+        }
     }
 }
 
