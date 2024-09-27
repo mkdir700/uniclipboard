@@ -49,7 +49,6 @@ base64 = "0.22.1"
 dirs = "5.0.1"
 toml = "0.8.19"
 once_cell = "1.19.0"
-arboard = "3.4.0"
 image = "0.25.2"
 openssl-sys = "0.9"
 device_query = "2.1.0"
@@ -60,6 +59,7 @@ tokio-tungstenite = "0.19"
 futures-util = "0.3"
 async-trait = "0.1.82"
 futures = "0.3.30"
+clipboard-rs = "0.2.1"
 
 [target.'cfg(windows)'.dependencies]
 clipboard-win = { version = "5.4.0" }
@@ -84,3 +84,4 @@ mockall = "0.11"
 tokio = { version = "1", features = ["full"] }
 serial_test = "3.1.1"
 enigo = "0.2.1"
+arboard = "3.4.1"
