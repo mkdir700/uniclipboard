@@ -27,9 +27,9 @@ fn test_parse_args_with_all_options() {
 fn test_parse_args_with_short_options() {
     let args = Args::parse_from([
         "test",
-        "-s",
-        "-i", "192.168.1.100",
-        "-p", "8080"
+        "--server",
+        "--server-ip", "192.168.1.100",
+        "--server-port", "8080"
     ]);
 
     assert!(args.server);

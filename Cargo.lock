@@ -2992,6 +2992,7 @@ dependencies = [
  "clap",
  "clipboard-rs",
  "clipboard-win",
+ "console",
  "device_query",
  "dialoguer",
  "dirs",
