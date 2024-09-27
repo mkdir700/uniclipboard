@@ -80,7 +80,7 @@ impl UniClipboard {
                         .await
                         .clone()
                         .unwrap_or(String::from(""))
-                        == payload.hash()
+                        == payload.get_key()
                     {
                         continue;
                     }
@@ -107,7 +107,7 @@ impl UniClipboard {
             while *is_running.read().await {
                 match remote_sync.pull(Some(Duration::from_secs(10))).await {
                     Ok(content) => {
-                        let content_hash = content.hash();
+                        let content_hash = content.get_key();
                         if let Err(e) = clipboard.set_clipboard_content(content).await {
                             error!("Failed to set clipboard content: {:?}", e);
                         }
@@ -265,6 +265,10 @@ impl UniClipboardBuilder {
         let remote_sync_manager = RemoteSyncManager::new();
         remote_sync_manager.set_sync_handler(remote_sync).await;
 
-        Ok(UniClipboard::new(clipboard, remote_sync_manager, self.key_mouse_monitor))
+        Ok(UniClipboard::new(
+            clipboard,
+            remote_sync_manager,
+            self.key_mouse_monitor,
+        ))
     }
 }

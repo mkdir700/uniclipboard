@@ -1,11 +1,10 @@
 use base64::Engine;
 use bytes::Bytes;
 use chrono::{DateTime, Utc};
-use hex;
 use serde::{Deserialize, Serialize};
 use serde_json;
-use sha2::{Digest, Sha256};
 use std::fmt;
+use twox_hash::xxh3::hash64;
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub enum Payload {
@@ -130,16 +129,17 @@ impl Payload {
         }
     }
 
-    pub fn hash(&self) -> String {
-        let mut hasher = Sha256::new();
-        hasher.update(self.get_content());
-        hex::encode(hasher.finalize())
+    /// 获取 Payload 的唯一标识符
+    pub fn get_key(&self) -> String {
+        let content = self.get_content();
+        let hash = hash64(content);
+        format!("{:016x}", hash)
     }
 
     pub fn eq(&self, other: &Payload) -> bool {
         // TODO: 使用更高效的方式比较两个 Payload 是否相等
         //  比如对于图片类型，比较图片的大小、格式、尺寸等
-        self.hash() == other.hash()
+        self.get_key() == other.get_key()
     }
 
     pub fn to_json(&self) -> String {

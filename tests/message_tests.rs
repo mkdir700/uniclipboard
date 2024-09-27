@@ -71,8 +71,8 @@ fn test_payload_hash() {
         Utc::now(),
     );
 
-    assert_eq!(payload1.hash(), payload2.hash());
-    assert_ne!(payload1.hash(), payload3.hash());
+    assert_eq!(payload1.get_key(), payload2.get_key());
+    assert_ne!(payload1.get_key(), payload3.get_key());
 }
 
 #[test]

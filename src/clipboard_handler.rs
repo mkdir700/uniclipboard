@@ -68,7 +68,7 @@ impl LocalClipboard {
             }
 
             let current = self.read().await?;
-            let current_hash = current.hash();
+            let current_hash = current.get_key();
 
             // 使用 RwLock 来安全地访问和修改 last_content_hash
             {
