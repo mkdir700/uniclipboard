@@ -48,9 +48,21 @@ pub struct ImagePayload {
 impl ImagePayload {
     // 新增方法：计算图片内容的哈希值
     pub fn content_hash(&self) -> u64 {
-        let img = image::load_from_memory(&self.content).unwrap();
-        let pixels: Vec<u8> = img.to_rgb8().into_raw();
-        hash64(&pixels)
+        hash64(&self.content)
+    }
+
+    pub fn is_similar(&self, other: &ImagePayload) -> bool {
+        let threshold = 0.95; // 95% 相似度阈值
+        let hash1 = self.content_hash();
+        let hash2 = other.content_hash();
+        let similarity = (hash1 as f64 - (hash1 ^ hash2) as f64) / hash1 as f64;
+        similarity >= threshold
+    }
+
+    pub fn is_likely_same(&self, other: &ImagePayload) -> bool {
+        self.width == other.width &&
+        self.height == other.height &&
+        (self.size as f64 - other.size as f64).abs() / (self.size as f64) < 0.1 // 允许 10% 的大小差异
     }
 }
 
@@ -148,9 +160,22 @@ impl Payload {
                 // 使用图片内容哈希 + 尺寸信息作为唯一标识符
                 let content_hash = p.content_hash();
                 let size_info = format!("{}x{}", p.width, p.height);
-                let combined = format!("{:016x}_{}", content_hash, size_info);
-                format!("{:016x}", hash64(combined.as_bytes()))
+                format!("img_{:016x}_{}", content_hash, size_info)
             }
+        }
+    }
+
+    /// 判断两个 Payload 是否相同
+    /// 
+    /// 文本消息只比较内容是否相同
+    /// 图片消息只比较内容是否相似，不要求完全相同
+    pub fn is_duplicate(&self, other: &Payload) -> bool {
+        match (self, other) {
+            (Payload::Text(t1), Payload::Text(t2)) => t1.content == t2.content,
+            (Payload::Image(i1), Payload::Image(i2)) => {
+                i1.is_likely_same(i2) && i1.is_similar(i2)
+            },
+            _ => false,
         }
     }
 
