@@ -82,6 +82,10 @@ impl UniClipboard {
                         .unwrap_or(String::from(""))
                         == payload.get_key()
                     {
+                        info!(
+                            "Skip push to remote: {}, because it's the same as the last one",
+                            payload
+                        );
                         continue;
                     }
 
@@ -107,11 +111,11 @@ impl UniClipboard {
             while *is_running.read().await {
                 match remote_sync.pull(Some(Duration::from_secs(10))).await {
                     Ok(content) => {
+                        info!("Set local clipboard: {}", content);
                         let content_hash = content.get_key();
                         if let Err(e) = clipboard.set_clipboard_content(content).await {
                             error!("Failed to set clipboard content: {:?}", e);
                         }
-                        info!("Set local clipboard: {}", content_hash.clone());
                         *last_content_hash.write().await = Some(content_hash);
                     }
                     Err(e) => {

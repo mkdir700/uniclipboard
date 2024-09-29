@@ -131,14 +131,26 @@ impl Payload {
 
     /// 获取 Payload 的唯一标识符
     pub fn get_key(&self) -> String {
-        let content = self.get_content();
-        let hash = hash64(content);
-        format!("{:016x}", hash)
+        match self {
+            Payload::Text(p) => {
+                // 设备 ID + 文本 hash
+                let content = format!("{}_{}", p.device_id, hash64(p.content.as_ref()));
+                format!("{:016x}", hash64(content.as_bytes()))
+            }
+            Payload::Image(p) => {
+                // 设备 ID + 图片尺寸 + 图片格式 + 图片大小
+                let content = format!(
+                    "{}_{}x{}_{}_{}",
+                    p.device_id, p.width, p.height, p.format, p.size
+                );
+                let hash = hash64(content.as_bytes());
+                format!("{:016x}", hash)
+            }
+        }
     }
 
+    #[allow(dead_code)]
     pub fn eq(&self, other: &Payload) -> bool {
-        // TODO: 使用更高效的方式比较两个 Payload 是否相等
-        //  比如对于图片类型，比较图片的大小、格式、尺寸等
         self.get_key() == other.get_key()
     }
 
@@ -152,14 +164,16 @@ impl fmt::Display for Payload {
         match self {
             Payload::Text(text) => write!(
                 f,
-                "文本消息 - 设备: {}, 时间: {}, 内容长度: {}",
+                "文本消息 - KEY: {}, 设备: {}, 时间: {}, 内容长度: {}",
+                self.get_key(),
                 text.device_id,
                 text.timestamp,
                 text.content.len()
             ),
             Payload::Image(image) => write!(
                 f,
-                "图片消息 - 设备: {}, 时间: {}, 尺寸: {}x{}, 格式: {}, 大小: {}",
+                "图片消息 - KEY: {}, 设备: {}, 时间: {}, 尺寸: {}x{}, 格式: {}, 大小: {}",
+                self.get_key(),
                 image.device_id,
                 image.timestamp,
                 image.width,

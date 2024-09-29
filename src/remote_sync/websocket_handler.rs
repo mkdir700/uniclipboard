@@ -91,6 +91,7 @@ impl RemoteClipboardSync for WebSocketSync {
         if self.is_server {
             let server = self.server.as_ref().unwrap();
             if let Some(payload) = server.subscribe().await? {
+                info!("Pull result: {}", payload);
                 Ok(payload)
             } else {
                 Err(anyhow::anyhow!("No payload received"))
@@ -105,16 +106,21 @@ impl RemoteClipboardSync for WebSocketSync {
                 }
             };
 
-            if let Err(ref _e) = result {
-                let mut client = self.client.write().await;
-                if let Some(c) = client.as_mut() {
-                    // 重新连接
-                    c.connect().await?;
-                    c.register().await?;
+            match result {
+                Ok(payload) => {
+                    info!("Pull result: {}", payload);
+                    Ok(payload)
+                }
+                Err(e) => {
+                    let mut client = self.client.write().await;
+                    if let Some(c) = client.as_mut() {
+                        // 重新连接
+                        c.connect().await?;
+                        c.register().await?;
+                    }
+                    Err(e)
                 }
             }
-
-            result
         }
     }
 
