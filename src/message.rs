@@ -52,17 +52,10 @@ impl ImagePayload {
     }
 
     pub fn is_similar(&self, other: &ImagePayload) -> bool {
-        let threshold = 0.95; // 95% 相似度阈值
-        let hash1 = self.content_hash();
-        let hash2 = other.content_hash();
-        let similarity = (hash1 as f64 - (hash1 ^ hash2) as f64) / hash1 as f64;
-        similarity >= threshold
-    }
-
-    pub fn is_likely_same(&self, other: &ImagePayload) -> bool {
-        self.width == other.width &&
-        self.height == other.height &&
-        (self.size as f64 - other.size as f64).abs() / (self.size as f64) < 0.1 // 允许 10% 的大小差异
+        // 尺寸一致且文件大小相差不超过 3%
+        self.width == other.width
+            && self.height == other.height
+            && (self.size as f64 - other.size as f64).abs() / (self.size as f64) <= 0.03
     }
 }
 
@@ -166,15 +159,13 @@ impl Payload {
     }
 
     /// 判断两个 Payload 是否相同
-    /// 
+    ///
     /// 文本消息只比较内容是否相同
     /// 图片消息只比较内容是否相似，不要求完全相同
     pub fn is_duplicate(&self, other: &Payload) -> bool {
         match (self, other) {
             (Payload::Text(t1), Payload::Text(t2)) => t1.content == t2.content,
-            (Payload::Image(i1), Payload::Image(i2)) => {
-                i1.is_likely_same(i2) && i1.is_similar(i2)
-            },
+            (Payload::Image(i1), Payload::Image(i2)) => i1.is_similar(i2),
             _ => false,
         }
     }
