@@ -133,15 +133,13 @@ impl Payload {
     pub fn get_key(&self) -> String {
         match self {
             Payload::Text(p) => {
-                // 设备 ID + 文本 hash
-                let content = format!("{}_{}", p.device_id, hash64(p.content.as_ref()));
-                format!("{:016x}", hash64(content.as_bytes()))
+                format!("{:016x}", hash64(p.content.as_ref()))
             }
             Payload::Image(p) => {
-                // 设备 ID + 图片尺寸 + 图片格式 + 图片大小
+                // 图片尺寸 + 图片格式 + 图片大小
                 let content = format!(
-                    "{}_{}x{}_{}_{}",
-                    p.device_id, p.width, p.height, p.format, p.size
+                    "{}x{}_{}_{}",
+                    p.width, p.height, p.format, p.size
                 );
                 let hash = hash64(content.as_bytes());
                 format!("{:016x}", hash)
