@@ -4,6 +4,7 @@ use clipboard_rs::common::RustImage;
 use clipboard_rs::{Clipboard, ClipboardContext, ClipboardHandler, RustImageData};
 #[cfg(target_os = "windows")]
 use clipboard_win::empty;
+#[cfg(target_os = "windows")]
 use clipboard_win::{formats, set_clipboard};
 use log::debug;
 use std::sync::{Arc, Mutex};
@@ -13,7 +14,6 @@ use winapi::um::winuser::{CloseClipboard, OpenClipboard};
 
 use crate::config::CONFIG;
 use crate::message::Payload;
-use crate::config::CONFIG;
 use bytes::Bytes;
 
 pub struct RsClipboard(Arc<Mutex<ClipboardContext>>, Arc<Notify>);
