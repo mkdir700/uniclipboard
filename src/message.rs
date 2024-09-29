@@ -45,6 +45,15 @@ pub struct ImagePayload {
     pub size: usize,
 }
 
+impl ImagePayload {
+    // 新增方法：计算图片内容的哈希值
+    pub fn content_hash(&self) -> u64 {
+        let img = image::load_from_memory(&self.content).unwrap();
+        let pixels: Vec<u8> = img.to_rgb8().into_raw();
+        hash64(&pixels)
+    }
+}
+
 fn serialize_bytes<S>(bytes: &Bytes, serializer: S) -> Result<S::Ok, S::Error>
 where
     S: serde::Serializer,
@@ -136,13 +145,11 @@ impl Payload {
                 format!("{:016x}", hash64(p.content.as_ref()))
             }
             Payload::Image(p) => {
-                // 图片尺寸 + 图片格式 + 图片大小
-                let content = format!(
-                    "{}x{}_{}_{}",
-                    p.width, p.height, p.format, p.size
-                );
-                let hash = hash64(content.as_bytes());
-                format!("{:016x}", hash)
+                // 使用图片内容哈希 + 尺寸信息作为唯一标识符
+                let content_hash = p.content_hash();
+                let size_info = format!("{}x{}", p.width, p.height);
+                let combined = format!("{:016x}_{}", content_hash, size_info);
+                format!("{:016x}", hash64(combined.as_bytes()))
             }
         }
     }
@@ -157,6 +164,17 @@ impl Payload {
     }
 }
 
+// 友好的展示大小
+fn friendly_size(size: usize) -> String {
+    if size < 1024 {
+        format!("{} B", size)
+    } else if size < 1024 * 1024 {
+        format!("{} KB", size / 1024)
+    } else {
+        format!("{} MB", size / 1024 / 1024)
+    }
+}
+
 impl fmt::Display for Payload {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
@@ -166,7 +184,7 @@ impl fmt::Display for Payload {
                 self.get_key(),
                 text.device_id,
                 text.timestamp,
-                text.content.len()
+                friendly_size(text.content.len())
             ),
             Payload::Image(image) => write!(
                 f,
@@ -177,7 +195,7 @@ impl fmt::Display for Payload {
                 image.width,
                 image.height,
                 image.format,
-                image.size
+                friendly_size(image.size)
             ),
         }
     }
