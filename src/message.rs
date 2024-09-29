@@ -1,11 +1,10 @@
 use base64::Engine;
 use bytes::Bytes;
 use chrono::{DateTime, Utc};
-use hex;
 use serde::{Deserialize, Serialize};
 use serde_json;
-use sha2::{Digest, Sha256};
 use std::fmt;
+use twox_hash::xxh3::hash64;
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub enum Payload {
@@ -44,6 +43,20 @@ pub struct ImagePayload {
     pub height: usize,
     pub format: String,
     pub size: usize,
+}
+
+impl ImagePayload {
+    // 新增方法：计算图片内容的哈希值
+    pub fn content_hash(&self) -> u64 {
+        hash64(&self.content)
+    }
+
+    pub fn is_similar(&self, other: &ImagePayload) -> bool {
+        // 尺寸一致且文件大小相差不超过 3%
+        self.width == other.width
+            && self.height == other.height
+            && (self.size as f64 - other.size as f64).abs() / (self.size as f64) <= 0.03
+    }
 }
 
 fn serialize_bytes<S>(bytes: &Bytes, serializer: S) -> Result<S::Ok, S::Error>
@@ -130,20 +143,51 @@ impl Payload {
         }
     }
 
-    pub fn hash(&self) -> String {
-        let mut hasher = Sha256::new();
-        hasher.update(self.get_content());
-        hex::encode(hasher.finalize())
+    /// 获取 Payload 的唯一标识符
+    pub fn get_key(&self) -> String {
+        match self {
+            Payload::Text(p) => {
+                format!("{:016x}", hash64(p.content.as_ref()))
+            }
+            Payload::Image(p) => {
+                // 使用图片内容哈希 + 尺寸信息作为唯一标识符
+                let content_hash = p.content_hash();
+                let size_info = format!("{}x{}", p.width, p.height);
+                format!("img_{:016x}_{}", content_hash, size_info)
+            }
+        }
     }
 
+    /// 判断两个 Payload 是否相同
+    ///
+    /// 文本消息只比较内容是否相同
+    /// 图片消息只比较内容是否相似，不要求完全相同
+    pub fn is_duplicate(&self, other: &Payload) -> bool {
+        match (self, other) {
+            (Payload::Text(t1), Payload::Text(t2)) => t1.content == t2.content,
+            (Payload::Image(i1), Payload::Image(i2)) => i1.is_similar(i2),
+            _ => false,
+        }
+    }
+
+    #[allow(dead_code)]
     pub fn eq(&self, other: &Payload) -> bool {
-        // TODO: 使用更高效的方式比较两个 Payload 是否相等
-        //  比如对于图片类型，比较图片的大小、格式、尺寸等
-        self.hash() == other.hash()
+        self.get_key() == other.get_key()
     }
 
     pub fn to_json(&self) -> String {
         serde_json::to_string(self).unwrap()
+    }
+}
+
+// 友好的展示大小
+fn friendly_size(size: usize) -> String {
+    if size < 1024 {
+        format!("{} B", size)
+    } else if size < 1024 * 1024 {
+        format!("{} KB", size / 1024)
+    } else {
+        format!("{} MB", size / 1024 / 1024)
     }
 }
 
@@ -152,20 +196,22 @@ impl fmt::Display for Payload {
         match self {
             Payload::Text(text) => write!(
                 f,
-                "文本消息 - 设备: {}, 时间: {}, 内容长度: {}",
+                "文本消息 - KEY: {}, 设备: {}, 时间: {}, 内容长度: {}",
+                self.get_key(),
                 text.device_id,
                 text.timestamp,
-                text.content.len()
+                friendly_size(text.content.len())
             ),
             Payload::Image(image) => write!(
                 f,
-                "图片消息 - 设备: {}, 时间: {}, 尺寸: {}x{}, 格式: {}, 大小: {}",
+                "图片消息 - KEY: {}, 设备: {}, 时间: {}, 尺寸: {}x{}, 格式: {}, 大小: {}",
+                self.get_key(),
                 image.device_id,
                 image.timestamp,
                 image.width,
                 image.height,
                 image.format,
-                image.size
+                friendly_size(image.size)
             ),
         }
     }

@@ -2,12 +2,18 @@ use anyhow::Result;
 use chrono::Utc;
 use clipboard_rs::common::RustImage;
 use clipboard_rs::{Clipboard, ClipboardContext, ClipboardHandler, RustImageData};
+#[cfg(target_os = "windows")]
+use clipboard_win::empty;
+#[cfg(target_os = "windows")]
+use clipboard_win::{formats, set_clipboard};
 use log::debug;
 use std::sync::{Arc, Mutex};
 use tokio::sync::Notify;
+#[cfg(target_os = "windows")]
+use winapi::um::winuser::{CloseClipboard, OpenClipboard};
 
-use crate::message::Payload;
 use crate::config::CONFIG;
+use crate::message::Payload;
 use bytes::Bytes;
 
 pub struct RsClipboard(Arc<Mutex<ClipboardContext>>, Arc<Notify>);
@@ -59,6 +65,7 @@ impl RsClipboard {
         Ok(image)
     }
 
+    #[cfg(not(target_os = "windows"))]
     fn write_image(&self, image: RustImageData) -> Result<()> {
         let clipboard = self.clipboard();
         let guard = clipboard
@@ -67,6 +74,18 @@ impl RsClipboard {
         guard
             .set_image(image)
             .map_err(|e| anyhow::anyhow!("Failed to set image: {}", e))
+    }
+
+    #[cfg(target_os = "windows")]
+    fn write_image(&self, image: RustImageData) -> Result<()> {
+        Self::ensure_clipboard_open()?;
+        Self::empty_clipboard()?;
+        let bitmap = image
+            .to_bitmap()
+            .map_err(|e| anyhow::anyhow!("Failed to convert image: {}", e))?;
+        let result = set_clipboard(formats::Bitmap, &bitmap.get_bytes().to_vec())
+            .map_err(|e| anyhow::anyhow!("Failed to write image: {}", e));
+        result
     }
 }
 
@@ -118,6 +137,34 @@ impl RsClipboard {
 impl RsClipboard {
     pub async fn wait_clipboard_change(&self) -> Result<()> {
         self.1.notified().await;
+        Ok(())
+    }
+}
+
+#[cfg(target_os = "windows")]
+impl RsClipboard {
+    fn ensure_clipboard_open() -> Result<()> {
+        unsafe {
+            if OpenClipboard(std::ptr::null_mut()) == 0 {
+                return Err(anyhow::anyhow!("Failed to open clipboard"));
+            }
+        }
+        Ok(())
+    }
+
+    fn ensure_clipboard_closed() -> Result<()> {
+        unsafe {
+            if CloseClipboard() == 0 {
+                return Err(anyhow::anyhow!("Failed to close clipboard"));
+            }
+        }
+        Ok(())
+    }
+
+    fn empty_clipboard() -> Result<()> {
+        if empty().is_err() {
+            return Err(anyhow::anyhow!("Failed to empty clipboard"));
+        }
         Ok(())
     }
 }

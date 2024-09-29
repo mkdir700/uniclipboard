@@ -20,7 +20,7 @@ pub struct UniClipboard {
     key_mouse_monitor: Arc<Option<KeyMouseMonitor>>,
     is_running: Arc<RwLock<bool>>,
     is_paused: Arc<RwLock<bool>>,
-    last_content_hash: Arc<RwLock<Option<String>>>,
+    last_content: Arc<RwLock<Option<Payload>>>,
 }
 
 impl UniClipboard {
@@ -35,7 +35,7 @@ impl UniClipboard {
             key_mouse_monitor: Arc::new(key_mouse_monitor),
             is_running: Arc::new(RwLock::new(false)),
             is_paused: Arc::new(RwLock::new(false)),
-            last_content_hash: Arc::new(RwLock::new(None)),
+            last_content: Arc::new(RwLock::new(None)),
         }
     }
 
@@ -70,19 +70,17 @@ impl UniClipboard {
     ) -> Result<()> {
         let remote_sync = self.remote_sync.clone();
         let is_running = self.is_running.clone();
-        let last_content_hash = self.last_content_hash.clone();
+        let last_content = self.last_content.clone();
 
         tokio::spawn(async move {
             while *is_running.read().await {
                 if let Some(payload) = clipboard_receiver.recv().await {
-                    if *last_content_hash
-                        .read()
-                        .await
-                        .clone()
-                        .unwrap_or(String::from(""))
-                        == payload.hash()
-                    {
-                        continue;
+                    let last_content = last_content.read().await;
+                    if let Some(last_payload) = last_content.as_ref() {
+                        if last_payload.is_duplicate(&payload) {
+                            info!("Skip push to remote: {}, because it's the same as the last one", payload);
+                            continue;
+                        }
                     }
 
                     info!("Push to remote: {}", payload);
@@ -101,18 +99,17 @@ impl UniClipboard {
         let clipboard = self.clipboard.clone();
         let remote_sync = self.remote_sync.clone();
         let is_running = self.is_running.clone();
-        let last_content_hash = self.last_content_hash.clone();
+        let last_content = self.last_content.clone();
 
         tokio::spawn(async move {
             while *is_running.read().await {
                 match remote_sync.pull(Some(Duration::from_secs(10))).await {
                     Ok(content) => {
-                        let content_hash = content.hash();
-                        if let Err(e) = clipboard.set_clipboard_content(content).await {
+                        info!("Set local clipboard: {}", content);
+                        if let Err(e) = clipboard.set_clipboard_content(content.clone()).await {
                             error!("Failed to set clipboard content: {:?}", e);
                         }
-                        info!("Set local clipboard: {}", content_hash.clone());
-                        *last_content_hash.write().await = Some(content_hash);
+                        *last_content.write().await = Some(content);
                     }
                     Err(e) => {
                         // 处理错误，可能需要重试或记录日志
@@ -265,6 +262,10 @@ impl UniClipboardBuilder {
         let remote_sync_manager = RemoteSyncManager::new();
         remote_sync_manager.set_sync_handler(remote_sync).await;
 
-        Ok(UniClipboard::new(clipboard, remote_sync_manager, self.key_mouse_monitor))
+        Ok(UniClipboard::new(
+            clipboard,
+            remote_sync_manager,
+            self.key_mouse_monitor,
+        ))
     }
 }
