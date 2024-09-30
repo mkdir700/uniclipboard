@@ -9,10 +9,8 @@ use std::sync::{Arc, Mutex};
 use std::thread;
 use tokio::sync::Mutex as TokioMutex;
 use tokio::sync::{mpsc, Notify};
-use tokio::time::{sleep, Duration, Instant};
 
 pub struct LocalClipboard {
-    last_content_hash: Arc<TokioMutex<Option<String>>>,
     rs_clipboard: Arc<RsClipboard>,
     paused: Arc<TokioMutex<bool>>,
     stopped: Arc<TokioMutex<bool>>,
@@ -31,7 +29,6 @@ impl LocalClipboard {
             .add_handler(clipboard_change_handler)
             .get_shutdown_channel();
         Self {
-            last_content_hash: Arc::new(TokioMutex::new(None)),
             rs_clipboard: Arc::new(rs_clipboard),
             paused: Arc::new(TokioMutex::new(false)),
             stopped: Arc::new(TokioMutex::new(false)),
@@ -56,41 +53,6 @@ impl LocalClipboard {
 
     pub async fn write(&self, payload: Payload) -> Result<()> {
         self.rs_clipboard.write(payload)
-    }
-
-    pub async fn pull(&self, timeout: Option<Duration>) -> Result<Payload> {
-        let start_time = Instant::now();
-
-        loop {
-            if *self.paused.lock().await {
-                sleep(Duration::from_millis(200)).await;
-                continue;
-            }
-
-            let current = self.read().await?;
-            let current_hash = current.get_key();
-
-            // 使用 RwLock 来安全地访问和修改 last_content_hash
-            {
-                let last_hash = self.last_content_hash.lock().await;
-                if last_hash.as_ref() != Some(&current_hash) {
-                    // 如果哈希值不同，更新 last_content_hash 并返回当前内容
-                    drop(last_hash); // 释放读锁
-                    let mut last_hash = self.last_content_hash.lock().await;
-                    *last_hash = Some(current_hash);
-                    return Ok(current);
-                }
-            }
-
-            // 检查是否超时
-            if let Some(timeout) = timeout {
-                if start_time.elapsed() > timeout {
-                    return Err(anyhow::anyhow!("拉取操作超时").into());
-                }
-            }
-
-            sleep(Duration::from_millis(200)).await;
-        }
     }
 
     pub async fn start_monitoring(self: &Arc<Self>) -> Result<mpsc::Receiver<Payload>> {
@@ -118,10 +80,15 @@ impl LocalClipboard {
                     continue;
                 }
 
-                if let Ok(payload) = c.pull(None).await {
-                    debug!("Wait clipboard change: {}", payload);
-                    if let Err(e) = tx.send(payload).await {
-                        error!("Send payload failed: {:?}", e);
+                match c.read().await {
+                    Ok(payload) => {
+                        debug!("Wait clipboard change: {}", payload);
+                        if let Err(e) = tx.send(payload).await {
+                            error!("Send payload failed: {:?}", e);
+                        }
+                    }
+                    Err(e) => {
+                        error!("Read clipboard failed: {:?}", e);
                     }
                 }
             }
