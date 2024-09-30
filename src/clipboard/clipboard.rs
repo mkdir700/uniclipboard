@@ -12,6 +12,7 @@ use tokio::sync::Notify;
 #[cfg(target_os = "windows")]
 use winapi::um::winuser::{CloseClipboard, OpenClipboard};
 
+use super::utils::parallel_convert_image;
 use crate::config::CONFIG;
 use crate::message::Payload;
 use bytes::Bytes;
@@ -92,13 +93,20 @@ impl RsClipboard {
 impl RsClipboard {
     pub fn read(&self) -> Result<Payload> {
         if let Ok(image) = self.read_image() {
-            let png_data = image
+            let (width, height) = image.get_size();
+            // for windows, we need to convert image to png format
+            #[cfg(not(target_os = "windows"))]
+            let png_bytes = image
                 .to_png()
-                .map_err(|e| anyhow::anyhow!("Failed to convert image: {}", e))?;
-            let png_bytes = png_data.get_bytes().to_vec();
+                .map_err(|e| anyhow::anyhow!("Failed to convert image: {}", e))?
+                .get_bytes()
+                .to_vec();
+            // for windows, we need to convert image to png format
+            #[cfg(target_os = "windows")]
+            let png_bytes = parallel_convert_image(image)?;
+
             let size = png_bytes.len();
             let device_id = CONFIG.read().unwrap().get_device_id();
-            let (width, height) = image.get_size();
             Ok(Payload::new_image(
                 Bytes::from(png_bytes),
                 device_id,
