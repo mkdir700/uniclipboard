@@ -6,6 +6,7 @@ mod device;
 mod encrypt;
 mod file_metadata;
 mod key_mouse_monitor;
+mod logger;
 mod message;
 mod network;
 mod remote_sync;
@@ -22,8 +23,6 @@ use crate::cli::{interactive_input, parse_args};
 use crate::clipboard_handler::LocalClipboard;
 use crate::config::Config;
 use anyhow::Result;
-use env_logger::Env;
-use network::WebDAVClient;
 
 // 新增函数用于显示标志
 fn display_banner() {
@@ -47,7 +46,8 @@ fn display_banner() {
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    env_logger::Builder::from_env(Env::default().default_filter_or("debug")).init();
+    logger::init();
+
     display_banner();
 
     let args = parse_args();
