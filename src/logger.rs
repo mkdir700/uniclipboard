@@ -1,6 +1,5 @@
 use chrono::Local;
 use env_logger::{Builder, Env};
-use log::LevelFilter;
 use std::io::Write;
 
 pub fn init() {
@@ -31,6 +30,5 @@ pub fn init() {
                 record.args()
             )
         })
-        .filter(None, LevelFilter::Info)
         .init();
 }
