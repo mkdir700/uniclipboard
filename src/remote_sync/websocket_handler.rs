@@ -75,7 +75,6 @@ impl RemoteClipboardSync for WebSocketSync {
                 server.broadcast(payload, skip_addr).await?;
             }
         } else {
-            info!("Pushing payload: {}", payload);
             let client = self.client.read().await;
             if let Some(c) = client.as_ref() {
                 c.send(payload).await?;
