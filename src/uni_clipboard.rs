@@ -10,9 +10,9 @@ use tokio::time::sleep;
 use crate::clipboard_handler::LocalClipboard;
 use crate::key_mouse_monitor::KeyMouseMonitor;
 use crate::message::Payload;
-use crate::network::WebDAVClient;
 use crate::remote_sync::manager::RemoteSyncManager;
 use crate::remote_sync::{RemoteClipboardSync, WebDavSync, WebSocketSync};
+use crate::WebDAVClient;
 
 pub struct UniClipboard {
     clipboard: Arc<LocalClipboard>,
@@ -78,10 +78,7 @@ impl UniClipboard {
                     let last_content = last_content.read().await;
                     if let Some(last_payload) = last_content.as_ref() {
                         if last_payload.is_duplicate(&payload) {
-                            info!(
-                                "Skip push to remote: {}, because it's the same as the last one",
-                                payload
-                            );
+                            info!("Skip push to remote: {}, because it's the same as the last one", payload);
                             continue;
                         }
                     }
