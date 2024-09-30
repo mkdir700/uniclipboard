@@ -54,9 +54,9 @@ async fn test_local_clipboard_pull() {
     // 等待 100ms 后，确保新的内容已经写入
     tokio::time::sleep(std::time::Duration::from_millis(200)).await;
 
-    // 测试 pull 函数
+    // 测试 read 函数
     let pulled_payload = handler
-        .pull(Some(Duration::from_millis(400)))
+        .read()
         .await
         .unwrap();
 
