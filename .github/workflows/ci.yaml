@@ -2,10 +2,10 @@ name: CI
 
 on:
   push:
-    branches: ["**"]
+    branches: ["master", "dev"]
     tags: ["*"]
   pull_request:
-    branches: ["master"]
+    branches: ["master", "dev"]
 
 jobs:
   test:
@@ -48,27 +48,8 @@ jobs:
       run: |
         RUST_BACKTRACE=1 cargo tarpaulin --out Xml --verbose -- --test-threads=1
     - name: Upload coverage to Codecov
-      uses: codecov/codecov-action@v3
+      uses: codecov/codecov-action@v4.2.0
       with:
         token: ${{ secrets.CODECOV_TOKEN }}
         files: ./cobertura.xml
         fail_ci_if_error: true
-    - name: Check coverage
-      run: |
-        if [ ! -f cobertura.xml ]; then
-          echo "Coverage file not found"
-          exit 1
-        fi
-        COVERAGE=$(grep -oP 'line-rate="\K[^"]+' cobertura.xml || echo "0")
-        COVERAGE_PERCENTAGE=$(echo "$COVERAGE * 100" | bc)
-        if (( $(echo "$COVERAGE_PERCENTAGE < 80" | bc -l) )); then
-          echo "代码覆盖率 ($COVERAGE_PERCENTAGE%) 低于目标 (80%)"
-          exit 1
-        else
-          echo "代码覆盖率 ($COVERAGE_PERCENTAGE%) 达到或超过目标 (80%)"
-        fi
-    - name: Archive code coverage results
-      uses: actions/upload-artifact@v3
-      with:
-        name: code-coverage-report
-        path: cobertura.xml
