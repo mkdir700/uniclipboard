@@ -13,3 +13,6 @@ comment:
   layout: "reach, diff, flags, files"
   behavior: default
   require_changes: true  # 如果覆盖率没有变化，也发表评论
+
+github_checks:
+  annotations: true
