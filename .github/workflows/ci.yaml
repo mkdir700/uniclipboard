@@ -28,3 +28,59 @@ jobs:
         sudo apt-get install -y pkg-config libssl-dev libxdo-dev
     - name: Run tests
       run: make ci
+
+  coverage:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    - name: Install Rust
+      uses: actions-rs/toolchain@v1
+      with:
+        profile: minimal
+        toolchain: stable
+    - name: Install dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y pkg-config libssl-dev libxdo-dev
+    - name: Install tarpaulin
+      run: cargo install cargo-tarpaulin
+    - name: Generate coverage report
+      run: cargo tarpaulin --out Xml
+    - name: Upload coverage to Codecov
+      uses: codecov/codecov-action@v3
+      with:
+        token: ${{ secrets.CODECOV_TOKEN }}
+        files: ./cobertura.xml
+        fail_ci_if_error: true
+    - name: Check coverage
+      run: |
+        COVERAGE=$(grep -oP 'line-rate="\K[^"]+' cobertura.xml)
+        COVERAGE_PERCENTAGE=$(echo "$COVERAGE * 100" | bc)
+        if (( $(echo "$COVERAGE_PERCENTAGE < 80" | bc -l) )); then
+          echo "代码覆盖率 ($COVERAGE_PERCENTAGE%) 低于目标 (80%)"
+          exit 1
+        else
+          echo "代码覆盖率 ($COVERAGE_PERCENTAGE%) 达到或超过目标 (80%)"
+        fi
+    - name: Archive code coverage results
+      uses: actions/upload-artifact@v3
+      with:
+        name: code-coverage-report
+        path: cobertura.xml
+    - name: Comment PR
+      uses: actions/github-script@v6
+      if: github.event_name == 'pull_request'
+      with:
+        github-token: ${{secrets.GITHUB_TOKEN}}
+        script: |
+          const fs = require('fs')
+          const coverageReport = fs.readFileSync('cobertura.xml', 'utf8')
+          const coveragePercentage = coverageReport.match(/<coverage line-rate="(.*)">/)[1]
+          const coverage = (parseFloat(coveragePercentage) * 100).toFixed(2)
+          const targetMet = coverage >= 80 ? '✅' : '❌'
+          github.rest.issues.createComment({
+            issue_number: context.issue.number,
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            body: `代码覆盖率: ${coverage}% ${targetMet}\n目标: 80%`
+          })

@@ -1,0 +1,15 @@
+coverage:
+  status:
+    project:
+      default:
+        target: 80%    # 设置目标覆盖率为80%
+        threshold: 5%  # 允许5%的浮动
+    patch:
+      default:
+        target: 80%    # 新代码的目标覆盖率也是80%
+        threshold: 5%  # 允许5%的浮动
+
+comment:
+  layout: "reach, diff, flags, files"
+  behavior: default
+  require_changes: true  # 如果覆盖率没有变化，也发表评论
