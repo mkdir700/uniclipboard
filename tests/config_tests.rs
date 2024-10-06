@@ -67,6 +67,13 @@ fn test_save_config() {
     let config_path = config_dir.join("config.toml");
 
     env::set_var("UNICLIPBOARD_CONFIG_PATH", config_path.to_str().unwrap());
+    
+    let config = Config::default();
+    match config.save() {
+        Ok(_) => println!("Config saved successfully"),
+        Err(e) => panic!("Failed to save config: {:?}", e),
+    }
+    assert!(config_path.exists(), "Config file does not exist at {:?}", config_path);
 
     let mut config = Config::default();
     config.device_id = "save_test_device".to_string();

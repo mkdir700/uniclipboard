@@ -45,7 +45,8 @@ jobs:
     - name: Install tarpaulin
       run: cargo install cargo-tarpaulin
     - name: Generate coverage report
-      run: cargo tarpaulin --out Xml
+      run: |
+        RUST_BACKTRACE=1 cargo tarpaulin --out Xml --verbose -- --test-threads=1
     - name: Upload coverage to Codecov
       uses: codecov/codecov-action@v3
       with:
