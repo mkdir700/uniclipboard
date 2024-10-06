@@ -11,6 +11,7 @@ pub struct WebDAVClient {
 }
 
 impl WebDAVClient {
+    #[allow(dead_code)]
     pub async fn new(webdav_url: String, username: String, password: String) -> Result<Self> {
         let key = string_to_32_bytes(&password);
         let encryptor = Encryptor::from_key(&key);
@@ -22,6 +23,7 @@ impl WebDAVClient {
     }
 
     /// 检查是否连接到 WebDAV 服务器
+    #[allow(dead_code)]
     pub async fn is_connected(&self) -> bool {
         self.client.list("/", Depth::Number(0)).await.is_ok()
     }

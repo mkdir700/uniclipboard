@@ -1,8 +1,8 @@
 use log::warn;
 use once_cell::sync::Lazy;
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Mutex;
-use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Device {
@@ -44,17 +44,17 @@ impl DeviceManager {
         self.devices.insert(id, device);
     }
 
-    pub fn remove(&mut self, device_id: &str) -> Option<Device> {
-        self.devices.remove(device_id)
-    }
-
-    pub fn get(&self, device_id: &str) -> Option<&Device> {
-        self.devices.get(device_id)
-    }
-
-    pub fn has(&self, device_id: &str) -> bool {
-        self.devices.contains_key(device_id)
-    }
+    //pub fn remove(&mut self, device_id: &str) -> Option<Device> {
+    //    self.devices.remove(device_id)
+    //}
+    //
+    //pub fn get(&self, device_id: &str) -> Option<&Device> {
+    //    self.devices.get(device_id)
+    //}
+    //
+    //pub fn has(&self, device_id: &str) -> bool {
+    //    self.devices.contains_key(device_id)
+    //}
 
     pub fn get_by_device_id(&self, device_id: &str) -> Option<&Device> {
         self.devices

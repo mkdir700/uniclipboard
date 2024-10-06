@@ -5,7 +5,7 @@ use std::env;
 use std::fs;
 use std::path::PathBuf;
 use std::sync::RwLock;
-use uuid::Uuid;
+use crate::utils::generate_device_id;
 
 pub static CONFIG: Lazy<RwLock<Config>> = Lazy::new(|| RwLock::new(Config::default()));
 
@@ -35,12 +35,6 @@ pub struct Config {
     pub connect_websocket_server_addr: Option<String>,
     // 用于客户端连接的 websocket server 端口
     pub connect_websocket_server_port: Option<u16>,
-}
-
-fn generate_device_id() -> String {
-    // 随机生成 6 位字母
-    let device_id = Uuid::new_v4().to_string();
-    device_id.chars().take(6).collect()
 }
 
 impl Config {

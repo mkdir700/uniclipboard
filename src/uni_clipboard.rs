@@ -11,8 +11,7 @@ use crate::clipboard_handler::LocalClipboard;
 use crate::key_mouse_monitor::KeyMouseMonitor;
 use crate::message::Payload;
 use crate::network::WebDAVClient;
-use crate::remote_sync::manager::RemoteSyncManager;
-use crate::remote_sync::{RemoteClipboardSync, WebDavSync, WebSocketSync};
+use crate::remote_sync::{RemoteClipboardSync, RemoteSyncManager, WebDavSync, WebSocketSync};
 
 pub struct UniClipboard {
     clipboard: Arc<LocalClipboard>,

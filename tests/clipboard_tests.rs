@@ -1,7 +1,6 @@
 use bytes::Bytes;
 use chrono::Utc;
 use serial_test::serial;
-use std::time::Duration;
 use uniclipboard::{LocalClipboard, Payload};
 
 #[tokio::test]

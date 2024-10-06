@@ -8,7 +8,7 @@ use clipboard_win::empty;
 use clipboard_win::{formats, set_clipboard};
 use image::GenericImageView;
 use image::{ImageBuffer, Rgba, RgbaImage};
-use log::{debug, info};
+use log::debug;
 use png::Encoder;
 use rayon::prelude::*;
 use std::io::Cursor;
@@ -17,7 +17,7 @@ use tokio::sync::Notify;
 #[cfg(target_os = "windows")]
 use winapi::um::winuser::{CloseClipboard, OpenClipboard};
 
-// use super::utils::parallel_convert_image;
+#[cfg(target_os = "windows")]
 use super::utils::PlatformImage;
 use crate::config::CONFIG;
 use crate::message::Payload;
@@ -96,72 +96,6 @@ impl RsClipboard {
             Err(e) => Err(anyhow::anyhow!("Failed to write image: {}", e)),
         }
     }
-    // fn write_image(&self, image: RustImageData) -> Result<()> {
-    //     Self::ensure_clipboard_open()?;
-    //     Self::empty_clipboard()?;
-
-    //     let rgba_image = image
-    //         .to_rgba8()
-    //         .map_err(|e| anyhow::anyhow!("转换图像到RGBA8失败: {}", e))?;
-    //     let (width, height) = rgba_image.dimensions();
-
-    //     // 创建 BITMAPINFOHEADER
-    //     let bi_size = mem::size_of::<BITMAPINFOHEADER>();
-    //     let bi = BITMAPINFOHEADER {
-    //         biSize: bi_size as u32,
-    //         biWidth: width as i32,
-    //         biHeight: -(height as i32), // 负高度表示自顶向下的位图
-    //         biPlanes: 1,
-    //         biBitCount: 32,
-    //         biCompression: BI_RGB,
-    //         biSizeImage: (width * height * 4) as u32,
-    //         biXPelsPerMeter: 0,
-    //         biYPelsPerMeter: 0,
-    //         biClrUsed: 0,
-    //         biClrImportant: 0,
-    //     };
-
-    //     // 计算 DIB 数据的总大小
-    //     let total_size = bi_size + (width * height * 4) as usize;
-
-    //     // 分配全局内存
-    //     let h_dib = unsafe { GlobalAlloc(GMEM_MOVEABLE, total_size) };
-    //     if h_dib.is_null() {
-    //         return Err(anyhow::anyhow!("分配全局内存失败"));
-    //     }
-
-    //     // 锁定内存并获取指针
-    //     let p_dib = unsafe { GlobalLock(h_dib) as *mut u8 };
-    //     if p_dib.is_null() {
-    //         unsafe { GlobalFree(h_dib) };
-    //         return Err(anyhow::anyhow!("锁定全局内存失败"));
-    //     }
-
-    //     unsafe {
-    //         // 复制 BITMAPINFOHEADER
-    //         std::ptr::copy_nonoverlapping(&bi as *const _ as *const u8, p_dib, bi_size);
-
-    //         // 复制像素数据（BGRA 格式）
-    //         let p_pixels = p_dib.add(bi_size);
-    //         for (i, pixel) in rgba_image.pixels().enumerate() {
-    //             *p_pixels.add(i * 4) = pixel[2]; // B
-    //             *p_pixels.add(i * 4 + 1) = pixel[1]; // G
-    //             *p_pixels.add(i * 4 + 2) = pixel[0]; // R
-    //             *p_pixels.add(i * 4 + 3) = pixel[3]; // A
-    //         }
-
-    //         // 解锁内存
-    //         GlobalUnlock(h_dib);
-
-    //         // 设置剪贴板数据
-    //         if SetClipboardData(CF_DIB as u32, h_dib).is_null() {
-    //             GlobalFree(h_dib);
-    //             return Err(anyhow::anyhow!("设置剪贴板数据失败"));
-    //         }
-    //     }
-
-    //     Ok(())
-    // }
 }
 
 impl RsClipboard {

@@ -46,7 +46,8 @@ impl WebDavSync {
         Arc::clone(&self.client)
     }
 
-    /// 推送并返回文件路径
+    /// 推送并返回文件路径, 仅测试时使用
+    #[allow(dead_code)]
     pub async fn push_and_return_path(&self, payload: Payload) -> Result<String> {
         let path = self.client.upload(self.base_path.clone(), payload).await?;
         Ok(path)
