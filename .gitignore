@@ -2,3 +2,5 @@
 .DS_Store
 .env
 cobertura.xml
+build_rs_cov.profraw
+tarpaulin-report.html

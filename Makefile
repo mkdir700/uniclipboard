@@ -7,6 +7,9 @@ test:
 ci:
 	cargo test --features vendored_openssl
 
+coverage:
+	cargo tarpaulin --out Html --output-dir ./tarpaulin-report
+
 build-all:
 	make build-linux
 	make build-windows
