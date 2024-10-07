@@ -62,7 +62,6 @@ impl RsClipboard {
         Ok(image)
     }
 
-    #[cfg(not(target_os = "windows"))]
     fn write_image(&self, image: RustImageData) -> Result<()> {
         let clipboard = self.clipboard();
         let guard = clipboard
@@ -201,11 +200,30 @@ mod production {
                 .map_err(|e| anyhow::anyhow!("Failed to get image: {}", e))
         }
 
+        #[cfg(not(target_os = "windows"))]
         fn set_image(&self, image: RustImageData) -> Result<()> {
             self.0
                 .set_image(image)
                 .map_err(|e| anyhow::anyhow!("Failed to set image: {}", e))
         }
+
+        #[cfg(target_os = "windows")]
+        fn set_image(&self, image: RustImageData) -> Result<()> {
+            use super::super::utils::PlatformImage;
+            use clipboard_win::{formats, set_clipboard};
+    
+            let platform_image = PlatformImage::new(
+                image
+                    .get_dynamic_image()
+                    .map_err(|e| anyhow::anyhow!("Failed to get dynamic image: {}", e))?,
+            );
+            let bmp_bytes = platform_image.to_bitmap();
+            match set_clipboard(formats::Bitmap, &bmp_bytes) {
+                Ok(_) => Ok(()),
+                Err(e) => Err(anyhow::anyhow!("Failed to write image: {}", e)),
+            }
+        }
+        
     }
 
     impl RsClipboard {
@@ -222,54 +240,6 @@ mod production {
     }
 }
 
-#[cfg(target_os = "windows")]
-mod on_windows {
-    use super::super::utils::PlatformImage;
-    use super::*;
-    use clipboard_win::empty;
-    use clipboard_win::{formats, set_clipboard};
-    use winapi::um::winuser::{CloseClipboard, OpenClipboard};
-
-    impl RsClipboard {
-        fn write_image(&self, image: RustImageData) -> Result<()> {
-            let platform_image = PlatformImage::new(
-                image
-                    .get_dynamic_image()
-                    .map_err(|e| anyhow::anyhow!("Failed to get dynamic image: {}", e))?,
-            );
-            let bmp_bytes = platform_image.to_bitmap();
-            match set_clipboard(formats::Bitmap, &bmp_bytes) {
-                Ok(_) => Ok(()),
-                Err(e) => Err(anyhow::anyhow!("Failed to write image: {}", e)),
-            }
-        }
-
-        fn ensure_clipboard_open() -> Result<()> {
-            unsafe {
-                if OpenClipboard(std::ptr::null_mut()) == 0 {
-                    return Err(anyhow::anyhow!("Failed to open clipboard"));
-                }
-            }
-            Ok(())
-        }
-
-        fn ensure_clipboard_closed() -> Result<()> {
-            unsafe {
-                if CloseClipboard() == 0 {
-                    return Err(anyhow::anyhow!("Failed to close clipboard"));
-                }
-            }
-            Ok(())
-        }
-
-        fn empty_clipboard() -> Result<()> {
-            if empty().is_err() {
-                return Err(anyhow::anyhow!("Failed to empty clipboard"));
-            }
-            Ok(())
-        }
-    }
-}
 
 impl RsClipboardChangeHandler {
     pub fn new(notify: Arc<Notify>) -> Self {
@@ -485,22 +455,6 @@ mod tests {
                 assert_eq!(image_payload.format, "png");
             }
             _ => panic!("Expected image payload"),
-        }
-    }
-
-    #[cfg(target_os = "windows")]
-    mod windows_tests {
-        use super::*;
-
-        #[test]
-        fn test_ensure_clipboard_open_close() {
-            assert!(RsClipboard::ensure_clipboard_open().is_ok());
-            assert!(RsClipboard::ensure_clipboard_closed().is_ok());
-        }
-
-        #[test]
-        fn test_empty_clipboard() {
-            assert!(RsClipboard::empty_clipboard().is_ok());
         }
     }
 }
