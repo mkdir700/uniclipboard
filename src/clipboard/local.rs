@@ -1,6 +1,7 @@
 use crate::clipboard::{RsClipboard, RsClipboardChangeHandler};
 use crate::message::Payload;
 use anyhow::Result;
+use async_trait::async_trait;
 use clipboard_rs::WatcherShutdown;
 use clipboard_rs::{ClipboardWatcher, ClipboardWatcherContext};
 use log::debug;
@@ -9,7 +10,9 @@ use std::sync::{Arc, Mutex};
 use std::thread;
 use tokio::sync::Mutex as TokioMutex;
 use tokio::sync::{mpsc, Notify};
+use super::traits::LocalClipboardTrait;
 
+#[derive(Clone)]
 pub struct LocalClipboard {
     rs_clipboard: Arc<RsClipboard>,
     paused: Arc<TokioMutex<bool>>,
@@ -37,29 +40,34 @@ impl LocalClipboard {
         }
     }
 
-    pub async fn pause(&self) {
+}
+
+#[async_trait]
+impl LocalClipboardTrait for LocalClipboard {
+    async fn pause(&self) {
         let mut is_paused = self.paused.lock().await;
         *is_paused = true;
     }
 
-    pub async fn resume(&self) {
+    async fn resume(&self) {
         let mut is_paused = self.paused.lock().await;
         *is_paused = false;
     }
 
-    pub async fn read(&self) -> Result<Payload> {
+    async fn read(&self) -> Result<Payload> {
         self.rs_clipboard.read()
     }
 
-    pub async fn write(&self, payload: Payload) -> Result<()> {
+    async fn write(&self, payload: Payload) -> Result<()> {
         self.rs_clipboard.write(payload)
     }
 
-    pub async fn start_monitoring(self: &Arc<Self>) -> Result<mpsc::Receiver<Payload>> {
+    async fn start_monitoring(&self) -> Result<mpsc::Receiver<Payload>> {
         let (tx, rx) = mpsc::channel(100);
-        let c = Arc::clone(self);
-        let rs_clipboard = Arc::clone(&c.rs_clipboard);
-        let watcher = Arc::clone(&c.watcher);
+        let rs_clipboard = Arc::clone(&self.rs_clipboard);
+        let watcher = Arc::clone(&self.watcher);
+        let stopped = Arc::clone(&self.stopped);
+        let self_clone = self.clone();
 
         // 在后台线程中启动剪贴板监听
         thread::spawn(move || {
@@ -71,7 +79,7 @@ impl LocalClipboard {
         // 在异步任务中处理剪贴板变化
         tokio::spawn(async move {
             loop {
-                if *c.stopped.lock().await {
+                if *stopped.lock().await {
                     break;
                 }
 
@@ -80,7 +88,7 @@ impl LocalClipboard {
                     continue;
                 }
 
-                match c.read().await {
+                match self_clone.read().await {
                     Ok(payload) => {
                         debug!("Wait clipboard change: {}", payload);
                         if let Err(e) = tx.send(payload).await {
@@ -96,7 +104,7 @@ impl LocalClipboard {
         Ok(rx)
     }
 
-    pub async fn stop_monitoring(&self) -> Result<()> {
+    async fn stop_monitoring(&self) -> Result<()> {
         let mut is_stopped = self.stopped.lock().await;
         *is_stopped = true;
         if let Some(shutdown) = self.watcher_shutdown.lock().await.take() {
@@ -105,7 +113,7 @@ impl LocalClipboard {
         Ok(())
     }
 
-    pub async fn set_clipboard_content(&self, content: Payload) -> Result<()> {
+    async fn set_clipboard_content(&self, content: Payload) -> Result<()> {
         self.write(content).await
     }
 }

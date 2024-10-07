@@ -7,16 +7,16 @@ use tokio::signal::ctrl_c;
 use tokio::sync::{mpsc, RwLock};
 use tokio::time::sleep;
 
-use crate::clipboard_handler::LocalClipboard;
-use crate::key_mouse_monitor::KeyMouseMonitor;
+use crate::key_mouse_monitor::KeyMouseMonitorTrait;
 use crate::message::Payload;
-use crate::network::WebDAVClient;
-use crate::remote_sync::{RemoteClipboardSync, RemoteSyncManager, WebDavSync, WebSocketSync};
+use crate::remote_sync::RemoteSyncManagerTrait;
+use crate::clipboard::LocalClipboardTrait;
+
 
 pub struct UniClipboard {
-    clipboard: Arc<LocalClipboard>,
-    remote_sync: Arc<RemoteSyncManager>,
-    key_mouse_monitor: Arc<Option<KeyMouseMonitor>>,
+    clipboard: Arc<dyn LocalClipboardTrait>,
+    remote_sync: Arc<dyn RemoteSyncManagerTrait>,
+    key_mouse_monitor: Option<Arc<dyn KeyMouseMonitorTrait>>,
     is_running: Arc<RwLock<bool>>,
     is_paused: Arc<RwLock<bool>>,
     last_content: Arc<RwLock<Option<Payload>>>,
@@ -24,14 +24,14 @@ pub struct UniClipboard {
 
 impl UniClipboard {
     pub fn new(
-        clipboard: LocalClipboard,
-        remote_sync: RemoteSyncManager,
-        key_mouse_monitor: Option<KeyMouseMonitor>,
+        clipboard: Arc<dyn LocalClipboardTrait>,
+        remote_sync: Arc<dyn RemoteSyncManagerTrait>,
+        key_mouse_monitor: Option<Arc<dyn KeyMouseMonitorTrait>>,
     ) -> Self {
         Self {
-            clipboard: Arc::new(clipboard),
-            remote_sync: Arc::new(remote_sync),
-            key_mouse_monitor: Arc::new(key_mouse_monitor),
+            clipboard,
+            remote_sync,
+            key_mouse_monitor,
             is_running: Arc::new(RwLock::new(false)),
             is_paused: Arc::new(RwLock::new(false)),
             last_content: Arc::new(RwLock::new(None)),
@@ -214,9 +214,9 @@ impl UniClipboard {
 }
 
 pub struct UniClipboardBuilder {
-    clipboard: Option<LocalClipboard>,
-    remote_sync: Option<Arc<dyn RemoteClipboardSync>>,
-    key_mouse_monitor: Option<KeyMouseMonitor>,
+    clipboard: Option<Arc<dyn LocalClipboardTrait>>,
+    remote_sync: Option<Arc<dyn RemoteSyncManagerTrait>>,
+    key_mouse_monitor: Option<Arc<dyn KeyMouseMonitorTrait>>,
 }
 
 impl UniClipboardBuilder {
@@ -228,46 +228,25 @@ impl UniClipboardBuilder {
         }
     }
 
-    #[allow(dead_code)]
-    pub fn set_key_mouse_monitor(mut self, key_mouse_monitor: KeyMouseMonitor) -> Self {
-        self.key_mouse_monitor = Some(key_mouse_monitor);
-        self
-    }
-
-    pub fn set_local_clipboard(mut self, clipboard: LocalClipboard) -> Self {
+    pub fn set_local_clipboard(mut self, clipboard: Arc<dyn LocalClipboardTrait>) -> Self {
         self.clipboard = Some(clipboard);
         self
     }
 
-    pub fn set_websocket_sync(mut self, is_server: bool) -> Self {
-        self.remote_sync = Some(Arc::new(WebSocketSync::new(is_server)));
+    pub fn set_remote_sync(mut self, remote_sync: Arc<dyn RemoteSyncManagerTrait>) -> Self {
+        self.remote_sync = Some(remote_sync);
         self
     }
 
-    #[allow(dead_code)]
-    pub fn set_webdav_sync(mut self, webdav_client: WebDAVClient) -> Self {
-        self.remote_sync = Some(Arc::new(WebDavSync::new(webdav_client)));
+    pub fn set_key_mouse_monitor(mut self, key_mouse_monitor: Arc<dyn KeyMouseMonitorTrait>) -> Self {
+        self.key_mouse_monitor = Some(key_mouse_monitor);
         self
     }
 
-    pub async fn build(self) -> Result<UniClipboard> {
-        let clipboard = if let Some(clipboard) = self.clipboard {
-            clipboard
-        } else {
-            return Err(anyhow::anyhow!("No local clipboard enabled"));
-        };
-        let remote_sync = if let Some(remote_sync) = self.remote_sync {
-            remote_sync
-        } else {
-            return Err(anyhow::anyhow!("No remote sync enabled"));
-        };
-        let remote_sync_manager = RemoteSyncManager::new();
-        remote_sync_manager.set_sync_handler(remote_sync).await;
+    pub fn build(self) -> Result<UniClipboard> {
+        let clipboard = self.clipboard.ok_or_else(|| anyhow::anyhow!("No local clipboard set"))?;
+        let remote_sync = self.remote_sync.ok_or_else(|| anyhow::anyhow!("No remote sync set"))?;
 
-        Ok(UniClipboard::new(
-            clipboard,
-            remote_sync_manager,
-            self.key_mouse_monitor,
-        ))
+        Ok(UniClipboard::new(clipboard, remote_sync, self.key_mouse_monitor))
     }
 }

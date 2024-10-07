@@ -24,6 +24,7 @@ pub struct WebDavSync {
 }
 
 impl WebDavSync {
+    #[allow(dead_code)]
     pub fn new(client: WebDAVClient) -> Self {
         let base_path = format!("/uniclipboard");
         Self {

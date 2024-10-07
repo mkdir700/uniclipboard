@@ -4,6 +4,15 @@ use tokio::sync::{mpsc, Mutex};
 use tokio::time::{sleep, Duration, Instant};
 use std::thread;
 
+use async_trait::async_trait;
+
+
+#[async_trait]
+pub trait KeyMouseMonitorTrait: Send + Sync {
+    async fn start(&self);
+    async fn is_sleep(&self) -> bool;
+}
+
 pub struct KeyMouseMonitor {
     last_activity: Arc<Mutex<Instant>>,
     sleep_timeout: Duration,
@@ -52,10 +61,33 @@ impl KeyMouseMonitor {
         *last_activity = Instant::now();
     }
 
+    /// 停止监控
+    ///
+    /// 将 is_running 设置为 false，停止监控。
+    #[allow(dead_code)]
+    pub async fn stop(&self) {
+        let mut is_running = self.is_running.lock().await;
+        *is_running = false;
+    }
+
+    /// 设置休眠状态, 仅用于测试
+    ///
+    /// 如果休眠状态为 true，则将 is_running 设置为 false，停止监控。
+    /// 如果休眠状态为 false，则将 is_running 设置为 true，开始监控。
+    #[cfg(feature = "testing")]
+    #[allow(dead_code)]
+    pub async fn set_sleep(&self, value: bool) {
+        let mut is_running = self.is_running.lock().await;
+        *is_running = value;
+    }
+}
+
+#[async_trait]
+impl KeyMouseMonitorTrait for KeyMouseMonitor {
     /// 是否休眠
     ///
     /// 如果上次活动时间与当前时间的时间差大于休眠超时时间，则返回 true，否则返回 false。
-    pub async fn is_sleep(&self) -> bool {
+    async fn is_sleep(&self) -> bool {
         let last_activity = self.get_last_activity().await;
         let now = Instant::now();
         now.duration_since(last_activity) > self.sleep_timeout
@@ -69,7 +101,7 @@ impl KeyMouseMonitor {
     /// 监控过程中，每隔 200 毫秒检查一次键鼠活动。
     /// 如果键鼠活动发生变化，则更新上次活动时间。
     /// 如果键鼠活动长时间没有变化，则认为系统处于休眠状态。
-    pub async fn start(&self) {
+    async fn start(&self) {
         let mut is_running = self.is_running.lock().await;
         if *is_running {
             return;
@@ -101,25 +133,6 @@ impl KeyMouseMonitor {
         });
     }
 
-    /// 停止监控
-    ///
-    /// 将 is_running 设置为 false，停止监控。
-    #[allow(dead_code)]
-    pub async fn stop(&self) {
-        let mut is_running = self.is_running.lock().await;
-        *is_running = false;
-    }
-
-    /// 设置休眠状态, 仅用于测试
-    ///
-    /// 如果休眠状态为 true，则将 is_running 设置为 false，停止监控。
-    /// 如果休眠状态为 false，则将 is_running 设置为 true，开始监控。
-    #[cfg(feature = "testing")]
-    #[allow(dead_code)]
-    pub async fn set_sleep(&self, value: bool) {
-        let mut is_running = self.is_running.lock().await;
-        *is_running = value;
-    }
 }
 
 #[cfg(test)]
