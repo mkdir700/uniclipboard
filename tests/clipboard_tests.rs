@@ -1,7 +1,7 @@
 use bytes::Bytes;
 use chrono::Utc;
 use serial_test::serial;
-use uniclipboard::{LocalClipboard, Payload};
+use uniclipboard::{LocalClipboard, Payload, LocalClipboardTrait};
 
 #[tokio::test]
 #[cfg_attr(not(feature = "clipboard_tests"), ignore)]

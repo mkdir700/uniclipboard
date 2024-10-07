@@ -16,6 +16,7 @@ use uniclipboard::{
     message::Payload,
     network::WebDAVClient,
     LocalClipboard,
+    LocalClipboardTrait,
 };
 
 static INIT: Once = Once::new();
