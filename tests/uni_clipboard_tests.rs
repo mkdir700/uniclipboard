@@ -1,139 +1,128 @@
-// use anyhow::Result;
-// use mockall::predicate::*;
-// use std::sync::{Arc, Mutex};
-// use std::time::Duration;
-// use tokio::sync::mpsc;
-// use uniclipboard::{
-//     message::Payload,
-//     network::WebDAVClient,
-//     remote_sync::RemoteClipboardSync,
-//     uni_clipboard::{UniClipboard, UniClipboardBuilder},
-//     KeyMouseMonitorTrait, LocalClipboardTrait, RemoteSyncManagerTrait,
-// };
+use anyhow::Result;
+use bytes::Bytes;
+use chrono::Utc;
+use serial_test::serial;
+use std::{sync::Arc, time::Duration};
+use uniclipboard::Payload;
+use uniclipboard::{
+    clipboard::LocalClipboard,
+    config::CONFIG,
+    remote_sync::{RemoteSyncManager, WebSocketSync},
+    uni_clipboard::{UniClipboard, UniClipboardBuilder},
+    RemoteSyncManagerTrait,
+};
 
-// mockall::mock! {
-//     LocalClipboard {}
-//     #[async_trait::async_trait]
-//     impl LocalClipboardTrait for LocalClipboard {
-//         async fn start_monitoring(&self) -> Result<mpsc::Receiver<Payload>>;
-//         async fn stop_monitoring(&self) -> Result<()>;
-//         async fn pause(&self);
-//         async fn resume(&self);
-//         async fn set_clipboard_content(&self, content: Payload) -> Result<()>;
-//         async fn read(&self) -> Result<Payload>;
-//         async fn write(&self, payload: Payload) -> Result<()>;
-//     }
-// }
+fn setup_config() {
+    let mut config = CONFIG.write().unwrap();
+    config.websocket_server_addr = Some("127.0.0.1".to_string());
+    config.websocket_server_port = Some(8333);
+    config.connect_websocket_server_addr = Some("127.0.0.1".to_string());
+    config.connect_websocket_server_port = Some(8333);
+}
 
-// mockall::mock! {
-//     RemoteSyncManager {}
-//     #[async_trait::async_trait]
-//     impl RemoteSyncManagerTrait for RemoteSyncManager {
-//         async fn start(&self) -> Result<()>;
-//         async fn stop(&self) -> Result<()>;
-//         async fn pause(&self) -> Result<()>;
-//         async fn resume(&self) -> Result<()>;
-//         async fn push(&self, payload: Payload) -> Result<()>;
-//         async fn pull(&self, timeout: Option<Duration>) -> Result<Payload>;
-//         async fn set_sync_handler(&self, handler: Arc<dyn RemoteClipboardSync>);
-//         async fn sync(&self) -> Result<()>;
-//     }
-// }
+// 辅助函数：创建测试用的 UniClipboard 实例
+async fn create_test_uni_clipboard(is_server: bool) -> Result<UniClipboard> {
+    let local_clipboard = Arc::new(LocalClipboard::new());
+    let remote_sync_manager = Arc::new(RemoteSyncManager::new());
+    let websocket_sync = Arc::new(WebSocketSync::new(is_server));
 
-// mockall::mock! {
-//     KeyMouseMonitor {}
-//     #[async_trait::async_trait]
-//     impl KeyMouseMonitorTrait for KeyMouseMonitor {
-//         async fn start(&self);
-//         async fn is_sleep(&self) -> bool;
-//     }
-// }
+    remote_sync_manager.set_sync_handler(websocket_sync).await;
 
-// #[tokio::test]
-// async fn test_uni_clipboard_builder_and_start() -> Result<()> {
-//     let mock_clipboard = Arc::new(Mutex::new(MockLocalClipboard::new()));
-//     let mock_remote_sync = Arc::new(Mutex::new(MockRemoteSyncManager::new()));
-//     let mock_key_mouse_monitor = Arc::new(Mutex::new(MockKeyMouseMonitor::new()));
+    UniClipboardBuilder::new()
+        .set_local_clipboard(local_clipboard)
+        .set_remote_sync(remote_sync_manager)
+        .build()
+}
 
-//     mock_clipboard.lock().unwrap()
-//         .expect_start_monitoring()
-//         .times(1)
-//         .returning(|| Ok(mpsc::channel(100).1));
+#[tokio::test]
+#[cfg_attr(not(feature = "integration_tests"), ignore)]
+#[serial]
+async fn test_uni_clipboard_start_stop() -> Result<()> {
+    setup_config();
+    let uni_clipboard = create_test_uni_clipboard(true).await?;
 
-//     mock_remote_sync.lock().unwrap()
-//         .expect_start()
-//         .times(1)
-//         .returning(|| Ok(()));
+    assert!(uni_clipboard.start().await.is_ok(), "启动 UniClipboard 失败");
+    assert!(uni_clipboard.start().await.is_err(), "重复启动 UniClipboard 应该失败");
+    assert!(uni_clipboard.stop().await.is_ok(), "停止 UniClipboard 失败");
+    assert!(uni_clipboard.stop().await.is_err(), "重复停止 UniClipboard 应该失败");
 
-//     mock_remote_sync.lock().unwrap()
-//         .expect_set_sync_handler()
-//         .times(1)
-//         .returning(|_| ());
+    Ok(())
+}
 
-//     mock_key_mouse_monitor.lock().unwrap()
-//         .expect_start()
-//         .times(1)
-//         .returning(|| ());
+#[tokio::test]
+#[cfg_attr(not(feature = "integration_tests"), ignore)]
+#[serial]
+async fn test_uni_clipboard_pause_resume() -> Result<()> {
+    setup_config();
+    let uni_clipboard = create_test_uni_clipboard(true).await?;
 
-//     let app = UniClipboardBuilder::new()
-//         .set_local_clipboard(mock_clipboard)
-//         .set_remote_sync(mock_remote_sync)
-//         .set_key_mouse_monitor(mock_key_mouse_monitor)
-//         .build()?;
+    assert!(uni_clipboard.start().await.is_ok(), "启动 UniClipboard 失败");
+    assert!(uni_clipboard.pause().await.is_ok(), "暂停 UniClipboard 失败");
+    assert!(uni_clipboard.resume().await.is_ok(), "恢复 UniClipboard 失败");
+    assert!(uni_clipboard.stop().await.is_ok(), "停止 UniClipboard 失败");
 
-//     app.start().await?;
+    Ok(())
+}
 
-//     Ok(())
-// }
+#[tokio::test]
+#[cfg_attr(not(feature = "integration_tests"), ignore)]
+#[serial]
+async fn test_uni_clipboard_client_server_sync() -> Result<()> {
+    setup_config();
+    // 创建服务器和客户端实例
+    let server = create_test_uni_clipboard(true).await?;
+    let client = create_test_uni_clipboard(false).await?;
 
-// #[tokio::test]
-// async fn test_uni_clipboard_wait_for_stop() -> Result<()> {
-//     let mock_clipboard = Arc::new(Mutex::new(MockLocalClipboard::new()));
-//     let mock_remote_sync = Arc::new(Mutex::new(MockRemoteSyncManager::new()));
-//     let mock_key_mouse_monitor = Arc::new(Mutex::new(MockKeyMouseMonitor::new()));
+    // 启动服务器和客户端
+    server.start().await?;
+    // 等待连接建立
+    tokio::time::sleep(Duration::from_secs(1)).await;
+    client.start().await?;
 
-//     // 设置期望...
-//     {
-//         let mut clipboard = mock_clipboard.lock().unwrap();
-//         clipboard.expect_start_monitoring()
-//             .times(1)
-//             .returning(|| Ok(mpsc::channel(100).1));
-//         clipboard.expect_stop_monitoring()
-//             .times(1)
-//             .returning(|| Ok(()));
-//     }
+    let client_clipboard = client.get_clipboard();
+    let test_payload = Payload::new_text(Bytes::from("test"), "device_id".to_string(), Utc::now());
+    // 从客户端写入一条消息，然后从服务器读取
+    client_clipboard.write(test_payload.clone()).await?;
+    
+    let content = server.get_clipboard().read().await?;
+    assert_eq!(content, test_payload, "客户端到服务器的同步失败");
 
-//     {
-//         let mut remote_sync = mock_remote_sync.lock().unwrap();
-//         remote_sync.expect_start()
-//             .times(1)
-//             .returning(|| Ok(()));
-//         remote_sync.expect_stop()
-//             .times(1)
-//             .returning(|| Ok(()));
-//         remote_sync.expect_set_sync_handler()
-//             .times(1)
-//             .returning(|_| ());
-//     }
+    // 停止服务器和客户端
+    server.stop().await?;
+    client.stop().await?;
 
-//     mock_key_mouse_monitor.lock().unwrap()
-//         .expect_start()
-//         .times(1)
-//         .returning(|| ());
+    Ok(())
+}
 
-//     // 模拟一些操作
-//     tokio::time::sleep(Duration::from_millis(100)).await;
+#[tokio::test]
+#[cfg_attr(not(feature = "integration_tests"), ignore)]
+#[serial]
+async fn test_uni_clipboard_duplicate_content_handling() -> Result<()> {
+    setup_config();
+    let uni_clipboard = create_test_uni_clipboard(true).await?;
+    uni_clipboard.start().await?;
 
-//     // 在另一个任务中调用 stop
-//     let app_clone = app.clone();
-//     tokio::spawn(async move {
-//         tokio::time::sleep(Duration::from_millis(50)).await;
-//         app_clone.stop().await.unwrap();
-//     });
+    let clipboard = uni_clipboard.get_clipboard();
+    let test_payload = Payload::new_text(Bytes::from("Duplicate content"), "device_id".to_string(), Utc::now());
 
-//     app.wait_for_stop().await?;
+    // 写入内容
+    clipboard.write(test_payload.clone()).await?;
+    
+    // 等待同步
+    tokio::time::sleep(Duration::from_secs(1)).await;
 
-//     Ok(())
-// }
+    // 再次写入相同的内容
+    clipboard.write(test_payload.clone()).await?;
 
-// // 可以添加更多测试用例来覆盖其他场景
+    // 等待同步
+    tokio::time::sleep(Duration::from_secs(1)).await;
+
+    // 读取内容，应该与最初写入的内容相同
+    let content = clipboard.read().await?;
+    assert_eq!(content, test_payload, "重复内容处理失败");
+
+    uni_clipboard.stop().await?;
+
+    Ok(())
+}
+

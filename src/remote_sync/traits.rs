@@ -4,6 +4,7 @@ use std::sync::Arc;
 use std::time::Duration;
 use async_trait::async_trait;
 
+#[cfg_attr(test, mockall::automock)]
 #[async_trait]
 pub trait RemoteClipboardSync: Send + Sync {
     async fn push(&self, payload: Payload) -> Result<()>;

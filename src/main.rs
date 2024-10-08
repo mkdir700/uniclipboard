@@ -14,11 +14,9 @@ mod utils;
 
 use anyhow::Result;
 use console::style;
-use key_mouse_monitor::KeyMouseMonitor;
 use log::{error, info};
 use uni_clipboard::UniClipboardBuilder;
 use std::sync::Arc;
-use std::time::Duration;
 
 use crate::cli::{interactive_input, parse_args};
 use crate::clipboard::LocalClipboard;
@@ -59,9 +57,10 @@ async fn main() -> Result<()> {
     }
     config.save(None)?;
 
-    let key_mouse_monitor = Arc::new(KeyMouseMonitor::new(Duration::from_secs(
-        config.key_mouse_monitor_sleep_timeout.unwrap(),
-    )));
+    // 暂时禁用
+    // let key_mouse_monitor = Arc::new(KeyMouseMonitor::new(Duration::from_secs(
+    //     config.key_mouse_monitor_sleep_timeout.unwrap(),
+    // )));
 
     let local_clipboard = Arc::new(LocalClipboard::new());
     let remote_sync_manager = Arc::new(RemoteSyncManager::new());
@@ -72,7 +71,7 @@ async fn main() -> Result<()> {
     let app = UniClipboardBuilder::new()
         .set_local_clipboard(local_clipboard)
         .set_remote_sync(remote_sync_manager)
-        .set_key_mouse_monitor(key_mouse_monitor)
+        // .set_key_mouse_monitor(key_mouse_monitor)
         .build()?;
 
     match app.start().await {

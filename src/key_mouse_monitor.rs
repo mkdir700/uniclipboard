@@ -21,6 +21,7 @@ pub struct KeyMouseMonitor {
 }
 
 impl KeyMouseMonitor {
+    #[allow(dead_code)]
     pub fn new(sleep_timeout: Duration) -> Self {
         let (state_sender, state_receiver) = mpsc::channel(100);
         let is_running = Arc::new(Mutex::new(false));

@@ -217,3 +217,11 @@ impl fmt::Display for Payload {
         }
     }
 }
+
+impl PartialEq for Payload {
+    fn eq(&self, other: &Self) -> bool {
+        self.get_key() == other.get_key()
+    }
+}
+
+impl Eq for Payload {}
