@@ -2,13 +2,16 @@ run:
 	cargo run
 
 test:
-	cargo test --features clipboard_tests,hardware_tests
+	cargo test --features integration_tests,hardware_tests
 
 ci:
 	cargo test --features vendored_openssl
 
 coverage:
 	cargo tarpaulin --out Html --output-dir ./tarpaulin-report
+
+coverage-integration:
+	cargo tarpaulin -j 4 --features integration_tests --out Html --output-dir ./tarpaulin-report
 
 build-all:
 	make build-linux
