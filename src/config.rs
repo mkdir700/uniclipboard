@@ -153,7 +153,6 @@ impl Config {
 /// - 如果获取不到配置文件路径，则返回错误
 pub fn get_config_path() -> Result<PathBuf> {
     if let Ok(path) = env::var("UNICLIPBOARD_CONFIG_PATH") {
-        println!("UNICLIPBOARD_CONFIG_PATH: {}", path);
         return Ok(PathBuf::from(path));
     }
 
@@ -161,4 +160,29 @@ pub fn get_config_path() -> Result<PathBuf> {
         .ok_or_else(|| anyhow::anyhow!("Could not find config directory"))?
         .join("uniclipboard");
     Ok(config_dir.join("config.toml"))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serial_test::serial;
+
+    #[test]
+    #[serial]
+    fn test_get_config_path_with_env() {
+        env::set_var("UNICLIPBOARD_CONFIG_PATH", "/tmp/uniclipboard");
+        let path = get_config_path().unwrap();
+        assert_eq!(path, PathBuf::from("/tmp/uniclipboard"));
+        env::remove_var("UNICLIPBOARD_CONFIG_PATH");
+    }
+
+    #[test]
+    #[serial]
+    fn test_get_config_path_without_env() {
+        let path = get_config_path().unwrap();
+        assert_eq!(
+            path,
+            PathBuf::from(dirs::config_dir().unwrap().join("uniclipboard").join("config.toml"))
+        );
+    }
 }
