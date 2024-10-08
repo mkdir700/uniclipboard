@@ -4,6 +4,7 @@ use anyhow::Result;
 use bytes::Bytes;
 use chrono::Utc;
 use clipboard_rs::common::RustImage;
+use clipboard_rs::{Clipboard, ClipboardContext};
 use clipboard_rs::{ClipboardHandler, RustImageData};
 use image::GenericImageView;
 use image::{ImageBuffer, Rgba, RgbaImage};
@@ -18,12 +19,27 @@ pub struct RsClipboard(Arc<Mutex<dyn ClipboardContextTrait>>, Arc<Notify>);
 
 pub struct RsClipboardChangeHandler(Arc<Notify>);
 
+pub struct ClipboardContextWrapper(ClipboardContext);
+
 // 定义一个 trait 来抽象 ClipboardContext 的行为
 pub trait ClipboardContextTrait: Send + Sync {
     fn get_text(&self) -> Result<String>;
     fn set_text(&self, text: String) -> Result<()>;
     fn get_image(&self) -> Result<RustImageData>;
     fn set_image(&self, image: RustImageData) -> Result<()>;
+}
+
+impl RsClipboardChangeHandler {
+    pub fn new(notify: Arc<Notify>) -> Self {
+        Self(notify)
+    }
+}
+
+impl ClipboardHandler for RsClipboardChangeHandler {
+    fn on_clipboard_change(&mut self) {
+        debug!("Clipboard changed");
+        self.0.notify_waiters();
+    }
 }
 
 impl RsClipboard {
@@ -174,83 +190,69 @@ impl RsClipboard {
     }
 }
 
-#[cfg(not(test))]
-mod production {
-    use super::*;
-    use clipboard_rs::{Clipboard, ClipboardContext};
-
-    pub struct ClipboardContextWrapper(ClipboardContext);
-
-    impl ClipboardContextTrait for ClipboardContextWrapper {
-        fn get_text(&self) -> Result<String> {
-            self.0
-                .get_text()
-                .map_err(|e| anyhow::anyhow!("Failed to get text: {}", e))
-        }
-
-        fn set_text(&self, text: String) -> Result<()> {
-            self.0
-                .set_text(text)
-                .map_err(|e| anyhow::anyhow!("Failed to set text: {}", e))
-        }
-
-        fn get_image(&self) -> Result<RustImageData> {
-            self.0
-                .get_image()
-                .map_err(|e| anyhow::anyhow!("Failed to get image: {}", e))
-        }
-
-        #[cfg(not(target_os = "windows"))]
-        fn set_image(&self, image: RustImageData) -> Result<()> {
-            self.0
-                .set_image(image)
-                .map_err(|e| anyhow::anyhow!("Failed to set image: {}", e))
-        }
-
-        #[cfg(target_os = "windows")]
-        fn set_image(&self, image: RustImageData) -> Result<()> {
-            use super::super::utils::PlatformImage;
-            use clipboard_win::{formats, set_clipboard};
-    
-            let platform_image = PlatformImage::new(
-                image
-                    .get_dynamic_image()
-                    .map_err(|e| anyhow::anyhow!("Failed to get dynamic image: {}", e))?,
-            );
-            let bmp_bytes = platform_image.to_bitmap();
-            match set_clipboard(formats::Bitmap, &bmp_bytes) {
-                Ok(_) => Ok(()),
-                Err(e) => Err(anyhow::anyhow!("Failed to write image: {}", e)),
-            }
-        }
-        
+impl ClipboardContextTrait for ClipboardContextWrapper {
+    fn get_text(&self) -> Result<String> {
+        self.0
+            .get_text()
+            .map_err(|e| anyhow::anyhow!("Failed to get text: {}", e))
     }
 
-    impl RsClipboard {
-        pub fn new(notify: Arc<Notify>) -> Result<Self> {
-            Ok(Self(
-                Arc::new(Mutex::new(ClipboardContextWrapper(
-                    ClipboardContext::new().map_err(|e| {
-                        anyhow::anyhow!("Failed to create clipboard context: {}", e)
-                    })?,
-                ))),
-                notify,
-            ))
+    fn set_text(&self, text: String) -> Result<()> {
+        self.0
+            .set_text(text)
+            .map_err(|e| anyhow::anyhow!("Failed to set text: {}", e))
+    }
+
+    fn get_image(&self) -> Result<RustImageData> {
+        self.0
+            .get_image()
+            .map_err(|e| anyhow::anyhow!("Failed to get image: {}", e))
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    fn set_image(&self, image: RustImageData) -> Result<()> {
+        self.0
+            .set_image(image)
+            .map_err(|e| anyhow::anyhow!("Failed to set image: {}", e))
+    }
+
+    #[cfg(target_os = "windows")]
+    fn set_image(&self, image: RustImageData) -> Result<()> {
+        use super::super::utils::PlatformImage;
+        use clipboard_win::{formats, set_clipboard};
+
+        let platform_image = PlatformImage::new(
+            image
+                .get_dynamic_image()
+                .map_err(|e| anyhow::anyhow!("Failed to get dynamic image: {}", e))?,
+        );
+        let bmp_bytes = platform_image.to_bitmap();
+        match set_clipboard(formats::Bitmap, &bmp_bytes) {
+            Ok(_) => Ok(()),
+            Err(e) => Err(anyhow::anyhow!("Failed to write image: {}", e)),
         }
     }
 }
 
-
-impl RsClipboardChangeHandler {
-    pub fn new(notify: Arc<Notify>) -> Self {
-        Self(notify)
+impl RsClipboard {
+    #[cfg(not(test))]
+    pub fn new(notify: Arc<Notify>) -> Result<Self> {
+        Ok(Self(
+            Arc::new(Mutex::new(ClipboardContextWrapper(
+                ClipboardContext::new()
+                    .map_err(|e| anyhow::anyhow!("Failed to create clipboard context: {}", e))?,
+            ))),
+            notify,
+        ))
     }
-}
 
-impl ClipboardHandler for RsClipboardChangeHandler {
-    fn on_clipboard_change(&mut self) {
-        debug!("Clipboard changed");
-        self.0.notify_waiters();
+    #[cfg(test)]
+    pub fn new(notify: Arc<Notify>) -> Result<Self> {
+        use self::mock::MockClipboardContext;
+        Ok(Self(
+            Arc::new(Mutex::new(MockClipboardContext::new())),
+            notify,
+        ))
     }
 }
 
@@ -259,16 +261,6 @@ impl ClipboardHandler for RsClipboardChangeHandler {
 mod mock {
     use super::*;
     use image::{DynamicImage, ImageBuffer, Rgba};
-
-    impl RsClipboard {
-        pub fn new(notify: Arc<Notify>) -> Result<Self> {
-            use self::mock::MockClipboardContext;
-            Ok(Self(
-                Arc::new(Mutex::new(MockClipboardContext::new())),
-                notify,
-            ))
-        }
-    }
 
     pub struct MockClipboardContext {
         text: Mutex<String>,
@@ -358,7 +350,7 @@ mod tests {
         // 构建测试资源文件的路径
         let mut test_image_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
         test_image_path.push("test_resources");
-        test_image_path.push("google.png");
+        test_image_path.push("moon.jpg");
         // 判断文件是否存在
         assert!(test_image_path.exists());
         println!("test_image_path: {}", test_image_path.to_str().unwrap());
