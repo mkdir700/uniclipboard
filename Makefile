@@ -11,7 +11,7 @@ coverage:
 	cargo tarpaulin --out Html --output-dir ./tarpaulin-report
 
 coverage-integration:
-	cargo tarpaulin -j 4 --features integration_tests --out Html --output-dir ./tarpaulin-report
+	cargo tarpaulin --config tarpaulin.toml
 
 build-all:
 	make build-linux

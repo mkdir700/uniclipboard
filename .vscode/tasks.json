@@ -1,0 +1,24 @@
+{
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"type": "cargo",
+			"command": "run",
+			"args": [
+				"--package",
+				"uniclipboard",
+				"--bin",
+				"uniclipboard",
+				"--features",
+				"hardware_tests",
+				"--features",
+				"testing"
+			],
+			"problemMatcher": [
+				"$rustc"
+			],
+			"group": "build",
+			"label": "rust: run uniclipboard"
+		}
+	]
+}
