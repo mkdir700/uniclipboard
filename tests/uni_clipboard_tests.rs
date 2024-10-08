@@ -97,6 +97,35 @@ async fn test_uni_clipboard_client_server_sync() -> Result<()> {
 #[tokio::test]
 #[cfg_attr(not(feature = "integration_tests"), ignore)]
 #[serial]
+async fn test_uni_clipboard_server_to_client_sync() -> Result<()> {
+    setup_config();
+    // 创建服务器和客户端实例
+    let server = create_test_uni_clipboard(true).await?;
+    let client = create_test_uni_clipboard(false).await?;
+
+    // 启动服务器和客户端
+    server.start().await?;
+    // 等待连接建立
+    tokio::time::sleep(Duration::from_secs(1)).await;
+    client.start().await?;
+
+    let test_payload = Payload::new_text(Bytes::from("test"), "device_id".to_string(), Utc::now());
+    // 从服务器写入一条消息，然后从客户端读取
+    server.get_clipboard().write(test_payload.clone()).await?;
+    
+    let content = client.get_clipboard().read().await?;
+    assert_eq!(content, test_payload, "服务器到客户端的同步失败");
+
+    // 停止服务器和客户端
+    server.stop().await?;
+    client.stop().await?;
+
+    Ok(())
+}
+
+#[tokio::test]
+#[cfg_attr(not(feature = "integration_tests"), ignore)]
+#[serial]
 async fn test_uni_clipboard_duplicate_content_handling() -> Result<()> {
     setup_config();
     let uni_clipboard = create_test_uni_clipboard(true).await?;
