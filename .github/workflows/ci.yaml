@@ -38,10 +38,10 @@ jobs:
       with:
         profile: minimal
         toolchain: stable
-    - name: Install dependencies
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y pkg-config libssl-dev libxdo-dev
+    # - name: Install dependencies
+    #   run: |
+    #     sudo apt-get update
+    #     sudo apt-get install -y pkg-config libssl-dev libxdo-dev
     - name: Install tarpaulin
       run: cargo install cargo-tarpaulin
     - name: Run integration tests and generate coverage report
@@ -52,3 +52,8 @@ jobs:
         token: ${{ secrets.CODECOV_TOKEN }}
         files: ./cobertura.xml
         fail_ci_if_error: true
+    - name: Clean up
+      if: always()
+      run: |
+        cargo clean
+        rm -f cobertura.xml
