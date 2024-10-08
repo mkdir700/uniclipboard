@@ -15,7 +15,7 @@ use super::traits::LocalClipboardTrait;
 #[derive(Clone)]
 pub struct LocalClipboard {
     rs_clipboard: Arc<RsClipboard>,
-    paused: Arc<TokioMutex<bool>>,
+    paused: Arc<(TokioMutex<bool>, Notify)>,
     stopped: Arc<TokioMutex<bool>>,
     watcher: Arc<Mutex<ClipboardWatcherContext<RsClipboardChangeHandler>>>,
     watcher_shutdown: Arc<TokioMutex<Option<WatcherShutdown>>>,
@@ -33,7 +33,7 @@ impl LocalClipboard {
             .get_shutdown_channel();
         Self {
             rs_clipboard: Arc::new(rs_clipboard),
-            paused: Arc::new(TokioMutex::new(false)),
+            paused: Arc::new((TokioMutex::new(false), Notify::new())),
             stopped: Arc::new(TokioMutex::new(false)),
             watcher: Arc::new(Mutex::new(watcher)),
             watcher_shutdown: Arc::new(TokioMutex::new(Some(watcher_shutdown))),
@@ -45,13 +45,14 @@ impl LocalClipboard {
 #[async_trait]
 impl LocalClipboardTrait for LocalClipboard {
     async fn pause(&self) {
-        let mut is_paused = self.paused.lock().await;
+        let mut is_paused = self.paused.0.lock().await;
         *is_paused = true;
     }
 
     async fn resume(&self) {
-        let mut is_paused = self.paused.lock().await;
+        let mut is_paused = self.paused.0.lock().await;
         *is_paused = false;
+        self.paused.1.notify_waiters();
     }
 
     async fn read(&self) -> Result<Payload> {
@@ -67,6 +68,7 @@ impl LocalClipboardTrait for LocalClipboard {
         let rs_clipboard = Arc::clone(&self.rs_clipboard);
         let watcher = Arc::clone(&self.watcher);
         let stopped = Arc::clone(&self.stopped);
+        let paused = Arc::clone(&self.paused);
         let self_clone = self.clone();
 
         // 在后台线程中启动剪贴板监听
@@ -83,8 +85,18 @@ impl LocalClipboardTrait for LocalClipboard {
                     break;
                 }
 
+                if *paused.0.lock().await {
+                    paused.1.notified().await;
+                    continue;
+                }
+
                 if let Err(e) = rs_clipboard.wait_clipboard_change().await {
                     error!("Wait clipboard change failed: {:?}", e);
+                    continue;
+                }
+
+                if *paused.0.lock().await {
+                    paused.1.notified().await;
                     continue;
                 }
 
