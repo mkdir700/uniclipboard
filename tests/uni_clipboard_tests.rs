@@ -1,74 +1,157 @@
 use anyhow::Result;
-use dotenv::dotenv;
-use std::env;
-use std::sync::{Arc, Once};
+use bytes::Bytes;
+use chrono::Utc;
+use serial_test::serial;
+use std::{sync::Arc, time::Duration};
+use uniclipboard::Payload;
 use uniclipboard::{
-    config::{Config, CONFIG},
-    network::WebDAVClient,
-    uni_clipboard::UniClipboardBuilder,
+    clipboard::LocalClipboard,
+    config::CONFIG,
+    remote_sync::{RemoteSyncManager, WebSocketSync},
+    uni_clipboard::{UniClipboard, UniClipboardBuilder},
+    RemoteSyncManagerTrait,
 };
 
-static INIT: Once = Once::new();
-
-fn setup() {
-    INIT.call_once(|| {
-        dotenv().ok();
-        let mut test_config = Config::default();
-        test_config.device_id = "test-device".to_string();
-        test_config.webdav_url = Some(env::var("WEBDAV_URL").expect("WEBDAV_URL not set"));
-        test_config.username = Some(env::var("WEBDAV_USERNAME").expect("WEBDAV_USERNAME not set"));
-        test_config.password = Some(env::var("WEBDAV_PASSWORD").expect("WEBDAV_PASSWORD not set"));
-        *CONFIG.write().unwrap() = test_config;
-    });
+fn setup_config() {
+    let mut config = CONFIG.write().unwrap();
+    config.websocket_server_addr = Some("127.0.0.1".to_string());
+    config.websocket_server_port = Some(8333);
+    config.connect_websocket_server_addr = Some("127.0.0.1".to_string());
+    config.connect_websocket_server_port = Some(8333);
 }
 
-async fn create_webdav_client() -> Result<WebDAVClient> {
-    setup();
-    let webdav_url = env::var("WEBDAV_URL").expect("WEBDAV_URL not set");
-    let username = env::var("WEBDAV_USERNAME").expect("WEBDAV_USERNAME not set");
-    let password = env::var("WEBDAV_PASSWORD").expect("WEBDAV_PASSWORD not set");
+// 辅助函数：创建测试用的 UniClipboard 实例
+async fn create_test_uni_clipboard(is_server: bool) -> Result<UniClipboard> {
+    let local_clipboard = Arc::new(LocalClipboard::new());
+    let remote_sync_manager = Arc::new(RemoteSyncManager::new());
+    let websocket_sync = Arc::new(WebSocketSync::new(is_server));
 
-    WebDAVClient::new(webdav_url, username, password).await
+    remote_sync_manager.set_sync_handler(websocket_sync).await;
+
+    UniClipboardBuilder::new()
+        .set_local_clipboard(local_clipboard)
+        .set_remote_sync(remote_sync_manager)
+        .build()
 }
 
-// TODO: 等待实现 MockWebDAVClient 再进行测试
-// #[tokio::test]
-// async fn test_uni_clipboard_new_without_key_mouse_monitor() {
-//     CONFIG.write().unwrap().enable_key_mouse_monitor = Some(false);
-//     let webdav_client = MockWebDAVClient;
-//     let uni_clipboard = UniClipboard::new(webdav_client);
+#[tokio::test]
+#[cfg_attr(not(feature = "integration_tests"), ignore)]
+#[serial]
+async fn test_uni_clipboard_start_stop() -> Result<()> {
+    setup_config();
+    let uni_clipboard = create_test_uni_clipboard(true).await?;
 
-//     assert!(uni_clipboard.key_mouse_monitor.is_none());
-//     // 其他断言...
-// }
+    assert!(uni_clipboard.start().await.is_ok(), "启动 UniClipboard 失败");
+    assert!(uni_clipboard.start().await.is_err(), "重复启动 UniClipboard 应该失败");
+    assert!(uni_clipboard.stop().await.is_ok(), "停止 UniClipboard 失败");
+    assert!(uni_clipboard.stop().await.is_err(), "重复停止 UniClipboard 应该失败");
 
-// #[tokio::test]
-// #[cfg(feature = "testing")]
-// #[cfg_attr(not(feature = "hardware_tests"), ignore)]
-// async fn test_uni_clipboard_sleep_wake_cycle() {
-//     use uniclipboard::LocalClipboard;
+    Ok(())
+}
 
-//     let webdav_client = create_webdav_client().await.unwrap();
-//     let local_clipboard = Arc::new(LocalClipboard::new());
-//     let uni_clipboard = UniClipboardBuilder::new();
+#[tokio::test]
+#[cfg_attr(not(feature = "integration_tests"), ignore)]
+#[serial]
+async fn test_uni_clipboard_pause_resume() -> Result<()> {
+    setup_config();
+    let uni_clipboard = create_test_uni_clipboard(true).await?;
 
-//     let uni_clipboard = Arc::new(uni_clipboard);
-//     let uni_clipboard_clone = Arc::clone(&uni_clipboard);
+    assert!(uni_clipboard.start().await.is_ok(), "启动 UniClipboard 失败");
+    assert!(uni_clipboard.pause().await.is_ok(), "暂停 UniClipboard 失败");
+    assert!(uni_clipboard.resume().await.is_ok(), "恢复 UniClipboard 失败");
+    assert!(uni_clipboard.stop().await.is_ok(), "停止 UniClipboard 失败");
 
-//     tokio::spawn(async move {
-//         uni_clipboard_clone.start().await.unwrap();
-//     });
+    Ok(())
+}
 
-//     // 模拟睡眠状态
-//     if let Some(monitor) = &uni_clipboard.key_mouse_monitor {
-//         monitor.set_sleep(true).await;
-//     }
-//     tokio::time::sleep(std::time::Duration::from_secs(2)).await;
-//     // 检查 clipboard_handler 是否暂停...
+#[tokio::test]
+#[cfg_attr(not(feature = "integration_tests"), ignore)]
+#[serial]
+async fn test_uni_clipboard_client_server_sync() -> Result<()> {
+    setup_config();
+    // 创建服务器和客户端实例
+    let server = create_test_uni_clipboard(true).await?;
+    let client = create_test_uni_clipboard(false).await?;
 
-//     // 模拟唤醒状态
-//     if let Some(monitor) = &uni_clipboard.key_mouse_monitor {
-//         monitor.set_sleep(false).await;
-//     }
-//     tokio::time::sleep(std::time::Duration::from_secs(2)).await;
-// }
+    // 启动服务器和客户端
+    server.start().await?;
+    // 等待连接建立
+    tokio::time::sleep(Duration::from_secs(1)).await;
+    client.start().await?;
+
+    let client_clipboard = client.get_clipboard();
+    let test_payload = Payload::new_text(Bytes::from("test"), "device_id".to_string(), Utc::now());
+    // 从客户端写入一条消息，然后从服务器读取
+    client_clipboard.write(test_payload.clone()).await?;
+    
+    let content = server.get_clipboard().read().await?;
+    assert_eq!(content, test_payload, "客户端到服务器的同步失败");
+
+    // 停止服务器和客户端
+    server.stop().await?;
+    client.stop().await?;
+
+    Ok(())
+}
+
+#[tokio::test]
+#[cfg_attr(not(feature = "integration_tests"), ignore)]
+#[serial]
+async fn test_uni_clipboard_server_to_client_sync() -> Result<()> {
+    setup_config();
+    // 创建服务器和客户端实例
+    let server = create_test_uni_clipboard(true).await?;
+    let client = create_test_uni_clipboard(false).await?;
+
+    // 启动服务器和客户端
+    server.start().await?;
+    // 等待连接建立
+    tokio::time::sleep(Duration::from_secs(1)).await;
+    client.start().await?;
+
+    let test_payload = Payload::new_text(Bytes::from("test"), "device_id".to_string(), Utc::now());
+    // 从服务器写入一条消息，然后从客户端读取
+    server.get_clipboard().write(test_payload.clone()).await?;
+    
+    let content = client.get_clipboard().read().await?;
+    assert_eq!(content, test_payload, "服务器到客户端的同步失败");
+
+    // 停止服务器和客户端
+    server.stop().await?;
+    client.stop().await?;
+
+    Ok(())
+}
+
+#[tokio::test]
+#[cfg_attr(not(feature = "integration_tests"), ignore)]
+#[serial]
+async fn test_uni_clipboard_duplicate_content_handling() -> Result<()> {
+    setup_config();
+    let uni_clipboard = create_test_uni_clipboard(true).await?;
+    uni_clipboard.start().await?;
+
+    let clipboard = uni_clipboard.get_clipboard();
+    let test_payload = Payload::new_text(Bytes::from("Duplicate content"), "device_id".to_string(), Utc::now());
+
+    // 写入内容
+    clipboard.write(test_payload.clone()).await?;
+    
+    // 等待同步
+    tokio::time::sleep(Duration::from_secs(1)).await;
+
+    // 再次写入相同的内容
+    clipboard.write(test_payload.clone()).await?;
+
+    // 等待同步
+    tokio::time::sleep(Duration::from_secs(1)).await;
+
+    // 读取内容，应该与最初写入的内容相同
+    let content = clipboard.read().await?;
+    assert_eq!(content, test_payload, "重复内容处理失败");
+
+    uni_clipboard.stop().await?;
+
+    Ok(())
+}
+

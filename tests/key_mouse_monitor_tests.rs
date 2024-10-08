@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use uniclipboard::key_mouse_monitor::KeyMouseMonitor;
+use uniclipboard::key_mouse_monitor::{KeyMouseMonitor, KeyMouseMonitorTrait};
 use tokio::time::{sleep, Duration, Instant};
 use serial_test::serial;
 use enigo::Direction::Press;

@@ -235,6 +235,17 @@ impl WebSocketServer {
     }
 }
 
+impl Clone for WebSocketServer {
+    fn clone(&self) -> Self {
+        WebSocketServer {
+            clients: Arc::clone(&self.clients),
+            tx: self.tx.clone(),
+            reader: Arc::clone(&self.reader),
+            writer: Arc::clone(&self.writer),
+        }
+    }
+}
+
 impl WebSocketClient {
     pub fn new(uri: Uri) -> Self {
         WebSocketClient {
@@ -301,15 +312,21 @@ impl WebSocketClient {
         Ok(())
     }
 
-    pub async fn disconnect(&self) -> Result<()> {
-        let mut writer = if let Some(writer) = self.writer.as_ref() {
-            writer.lock().await
+    pub async fn disconnect(&mut self) -> Result<()> {
+        if let Some(writer) = self.writer.as_ref() {
+            let mut writer_guard = writer.lock().await;
+            writer_guard.close().await?;
+            // 在这里显式地释放 writer_guard
+            drop(writer_guard);
         } else {
             return Err(anyhow::anyhow!(
                 "WebSocket error: Not connected, please connect first"
             ));
-        };
-        writer.close().await?;
+        }
+        
+        // 现在可以安全地修改 self.writer 和 self.reader
+        self.writer = Arc::new(None);
+        self.reader = Arc::new(None);
         Ok(())
     }
 
@@ -326,5 +343,127 @@ impl WebSocketClient {
         };
         writer.send(Message::Text(message)).await?;
         Ok(())
+    }
+}
+
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use bytes::Bytes;
+    use chrono::Utc;
+    use std::time::Duration;
+    use serial_test::serial;
+
+    // 辅助函数：创建一个WebSocketServer并运行它
+    async fn setup_server() -> WebSocketServer {
+        let server = WebSocketServer::new();
+        let server_clone = server.clone();
+        tokio::spawn(async move {
+            server_clone.run("127.0.0.1:8080").await.unwrap();
+        });
+        tokio::time::sleep(Duration::from_millis(100)).await; // 给服务器一些启动时间
+        server
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn test_websocket_server_creation() {
+        let server = WebSocketServer::new();
+        assert!(server.clients.lock().await.is_empty());
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn test_websocket_client_creation() {
+        let uri = "ws://127.0.0.1:8080".parse().unwrap();
+        let client = WebSocketClient::new(uri);
+        assert!(client.writer.is_none());
+        assert!(client.reader.is_none());
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn test_websocket_connection() {
+        let _server = setup_server().await;
+        
+        let uri = "ws://127.0.0.1:8080".parse().unwrap();
+        let mut client = WebSocketClient::new(uri);
+        
+        assert!(client.connect().await.is_ok());
+        assert!(client.writer.is_some());
+        assert!(client.reader.is_some());
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn test_websocket_send_receive() {
+        let server = setup_server().await;
+        
+        let uri = "ws://127.0.0.1:8080".parse().unwrap();
+        let mut client = WebSocketClient::new(uri);
+        client.connect().await.unwrap();
+        
+        // 注册客户端
+        client.register().await.unwrap();
+        
+        // 发送消息
+        let payload = Payload::new_text(
+            Bytes::from("test_content".to_string()),
+            "test_id".to_string(),
+            Utc::now(),
+        );
+        client.send(payload.clone()).await.unwrap();
+        
+        // 服务器应该能接收到消息
+        let received = server.subscribe().await.unwrap().unwrap();
+        assert_eq!(received, payload);
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn test_websocket_broadcast() {
+        let server = setup_server().await;
+        
+        // 创建两个客户端
+        let uri: Uri = "ws://127.0.0.1:8080".parse().unwrap();
+        let mut client1 = WebSocketClient::new(uri.clone());
+        let mut client2 = WebSocketClient::new(uri);
+        
+        client1.connect().await.unwrap();
+        client2.connect().await.unwrap();
+        
+        client1.register().await.unwrap();
+        client2.register().await.unwrap();
+        
+        // 广播消息
+        let payload = Payload::new_text(
+            Bytes::from("broadcast_content".to_string()),
+            "broadcast_id".to_string(),
+            Utc::now(),
+        );
+        server.broadcast(payload.clone(), None).await.unwrap();
+        
+        // 两个客户端都应该收到消息
+        let received1 = client1.receive().await.unwrap();
+        let received2 = client2.receive().await.unwrap();
+        
+        assert_eq!(received1, payload);
+        assert_eq!(received2, payload);
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn test_websocket_disconnect() {
+        let _ = setup_server().await;
+        
+        let uri = "ws://127.0.0.1:8080".parse().unwrap();
+        let mut client = WebSocketClient::new(uri);
+        client.connect().await.unwrap();
+        
+        client.disconnect().await.unwrap();
+        
+        assert!(client.writer.is_none());
+        assert!(client.reader.is_none());
     }
 }

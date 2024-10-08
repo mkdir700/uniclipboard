@@ -7,17 +7,15 @@ use tokio::signal::ctrl_c;
 use tokio::sync::{mpsc, RwLock};
 use tokio::time::sleep;
 
-use crate::clipboard_handler::LocalClipboard;
-use crate::key_mouse_monitor::KeyMouseMonitor;
+use crate::clipboard::LocalClipboardTrait;
+use crate::key_mouse_monitor::KeyMouseMonitorTrait;
 use crate::message::Payload;
-use crate::network::WebDAVClient;
-use crate::remote_sync::manager::RemoteSyncManager;
-use crate::remote_sync::{RemoteClipboardSync, WebDavSync, WebSocketSync};
+use crate::remote_sync::RemoteSyncManagerTrait;
 
 pub struct UniClipboard {
-    clipboard: Arc<LocalClipboard>,
-    remote_sync: Arc<RemoteSyncManager>,
-    key_mouse_monitor: Arc<Option<KeyMouseMonitor>>,
+    clipboard: Arc<dyn LocalClipboardTrait>,
+    remote_sync: Arc<dyn RemoteSyncManagerTrait>,
+    key_mouse_monitor: Option<Arc<dyn KeyMouseMonitorTrait>>,
     is_running: Arc<RwLock<bool>>,
     is_paused: Arc<RwLock<bool>>,
     last_content: Arc<RwLock<Option<Payload>>>,
@@ -25,18 +23,30 @@ pub struct UniClipboard {
 
 impl UniClipboard {
     pub fn new(
-        clipboard: LocalClipboard,
-        remote_sync: RemoteSyncManager,
-        key_mouse_monitor: Option<KeyMouseMonitor>,
+        clipboard: Arc<dyn LocalClipboardTrait>,
+        remote_sync: Arc<dyn RemoteSyncManagerTrait>,
+        key_mouse_monitor: Option<Arc<dyn KeyMouseMonitorTrait>>,
     ) -> Self {
         Self {
-            clipboard: Arc::new(clipboard),
-            remote_sync: Arc::new(remote_sync),
-            key_mouse_monitor: Arc::new(key_mouse_monitor),
+            clipboard,
+            remote_sync,
+            key_mouse_monitor,
             is_running: Arc::new(RwLock::new(false)),
             is_paused: Arc::new(RwLock::new(false)),
             last_content: Arc::new(RwLock::new(None)),
         }
+    }
+
+    #[cfg_attr(not(feature = "integration_tests"), ignore)]
+    #[allow(dead_code)]
+    pub fn get_clipboard(&self) -> Arc<dyn LocalClipboardTrait> {
+        self.clipboard.clone()
+    }
+
+    #[cfg_attr(not(feature = "integration_tests"), ignore)]
+    #[allow(dead_code)]
+    pub fn get_remote_sync(&self) -> Arc<dyn RemoteSyncManagerTrait> {
+        self.remote_sync.clone()
     }
 
     pub async fn start(&self) -> Result<()> {
@@ -64,6 +74,7 @@ impl UniClipboard {
 
         Ok(())
     }
+
     async fn start_local_to_remote_sync(
         &self,
         mut clipboard_receiver: mpsc::Receiver<Payload>,
@@ -215,9 +226,9 @@ impl UniClipboard {
 }
 
 pub struct UniClipboardBuilder {
-    clipboard: Option<LocalClipboard>,
-    remote_sync: Option<Arc<dyn RemoteClipboardSync>>,
-    key_mouse_monitor: Option<KeyMouseMonitor>,
+    clipboard: Option<Arc<dyn LocalClipboardTrait>>,
+    remote_sync: Option<Arc<dyn RemoteSyncManagerTrait>>,
+    key_mouse_monitor: Option<Arc<dyn KeyMouseMonitorTrait>>,
 }
 
 impl UniClipboardBuilder {
@@ -229,46 +240,217 @@ impl UniClipboardBuilder {
         }
     }
 
-    #[allow(dead_code)]
-    pub fn set_key_mouse_monitor(mut self, key_mouse_monitor: KeyMouseMonitor) -> Self {
-        self.key_mouse_monitor = Some(key_mouse_monitor);
-        self
-    }
-
-    pub fn set_local_clipboard(mut self, clipboard: LocalClipboard) -> Self {
+    pub fn set_local_clipboard(mut self, clipboard: Arc<dyn LocalClipboardTrait>) -> Self {
         self.clipboard = Some(clipboard);
         self
     }
 
-    pub fn set_websocket_sync(mut self, is_server: bool) -> Self {
-        self.remote_sync = Some(Arc::new(WebSocketSync::new(is_server)));
+    pub fn set_remote_sync(mut self, remote_sync: Arc<dyn RemoteSyncManagerTrait>) -> Self {
+        self.remote_sync = Some(remote_sync);
         self
     }
 
     #[allow(dead_code)]
-    pub fn set_webdav_sync(mut self, webdav_client: WebDAVClient) -> Self {
-        self.remote_sync = Some(Arc::new(WebDavSync::new(webdav_client)));
+    pub fn set_key_mouse_monitor(
+        mut self,
+        key_mouse_monitor: Arc<dyn KeyMouseMonitorTrait>,
+    ) -> Self {
+        self.key_mouse_monitor = Some(key_mouse_monitor);
         self
     }
 
-    pub async fn build(self) -> Result<UniClipboard> {
-        let clipboard = if let Some(clipboard) = self.clipboard {
-            clipboard
-        } else {
-            return Err(anyhow::anyhow!("No local clipboard enabled"));
-        };
-        let remote_sync = if let Some(remote_sync) = self.remote_sync {
-            remote_sync
-        } else {
-            return Err(anyhow::anyhow!("No remote sync enabled"));
-        };
-        let remote_sync_manager = RemoteSyncManager::new();
-        remote_sync_manager.set_sync_handler(remote_sync).await;
+    pub fn build(self) -> Result<UniClipboard> {
+        let clipboard = self
+            .clipboard
+            .ok_or_else(|| anyhow::anyhow!("No local clipboard set"))?;
+        let remote_sync = self
+            .remote_sync
+            .ok_or_else(|| anyhow::anyhow!("No remote sync set"))?;
 
         Ok(UniClipboard::new(
             clipboard,
-            remote_sync_manager,
+            remote_sync,
             self.key_mouse_monitor,
         ))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::remote_sync::RemoteClipboardSync;
+
+    use super::*;
+    use anyhow::Result;
+    use async_trait::async_trait;
+    use bytes::Bytes;
+    use std::sync::Arc;
+    use tokio::sync::Mutex;
+
+    // 模拟本地剪贴板
+    struct MockLocalClipboard {
+        content: Arc<Mutex<Option<Payload>>>,
+    }
+
+    #[async_trait::async_trait]
+    impl LocalClipboardTrait for MockLocalClipboard {
+        async fn start_monitoring(&self) -> Result<tokio::sync::mpsc::Receiver<Payload>> {
+            // 简化实现，返回一个空的接收器
+            let (_, rx) = tokio::sync::mpsc::channel(10);
+            Ok(rx)
+        }
+
+        async fn read(&self) -> Result<Payload> {
+            Ok(self.content.lock().await.clone().unwrap())
+        }
+
+        async fn write(&self, content: Payload) -> Result<()> {
+            *self.content.lock().await = Some(content);
+            Ok(())
+        }
+
+        async fn stop_monitoring(&self) -> Result<()> {
+            Ok(())
+        }
+
+        async fn set_clipboard_content(&self, content: Payload) -> Result<()> {
+            *self.content.lock().await = Some(content);
+            Ok(())
+        }
+
+        async fn pause(&self) {}
+
+        async fn resume(&self) {}
+    }
+
+    // 模拟远程同步管理器
+    struct MockRemoteSync {
+        content: Arc<Mutex<Option<Payload>>>,
+    }
+
+    #[async_trait]
+    impl RemoteSyncManagerTrait for MockRemoteSync {
+        async fn sync(&self) -> Result<()> {
+            Ok(())
+        }
+
+        async fn set_sync_handler(&self, _handler: Arc<dyn RemoteClipboardSync>) {}
+
+        async fn start(&self) -> Result<()> {
+            Ok(())
+        }
+
+        async fn stop(&self) -> Result<()> {
+            Ok(())
+        }
+
+        async fn push(&self, payload: Payload) -> Result<()> {
+            *self.content.lock().await = Some(payload);
+            Ok(())
+        }
+
+        async fn pull(&self, _timeout: Option<std::time::Duration>) -> Result<Payload> {
+            Ok(self.content.lock().await.clone().unwrap())
+        }
+
+        async fn pause(&self) -> Result<()> {
+            Ok(())
+        }
+
+        async fn resume(&self) -> Result<()> {
+            Ok(())
+        }
+    }
+
+    // 模拟键鼠监控器
+    struct MockKeyMouseMonitor {
+        is_sleep: Arc<Mutex<bool>>,
+    }
+
+    #[async_trait::async_trait]
+    impl KeyMouseMonitorTrait for MockKeyMouseMonitor {
+        async fn start(&self) {}
+
+        async fn is_sleep(&self) -> bool {
+            *self.is_sleep.lock().await
+        }
+    }
+
+    #[tokio::test]
+    async fn test_uni_clipboard_creation() {
+        let clipboard = Arc::new(MockLocalClipboard {
+            content: Arc::new(Mutex::new(None)),
+        });
+        let remote_sync = Arc::new(MockRemoteSync {
+            content: Arc::new(Mutex::new(None)),
+        });
+        let key_mouse_monitor = Arc::new(MockKeyMouseMonitor {
+            is_sleep: Arc::new(Mutex::new(false)),
+        });
+
+        let uni_clipboard = UniClipboardBuilder::new()
+            .set_local_clipboard(clipboard)
+            .set_remote_sync(remote_sync)
+            .set_key_mouse_monitor(key_mouse_monitor)
+            .build()
+            .expect("Failed to build UniClipboard");
+
+        assert!(uni_clipboard.start().await.is_ok());
+        assert!(uni_clipboard.stop().await.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_uni_clipboard_sync() {
+        let clipboard = Arc::new(MockLocalClipboard {
+            content: Arc::new(Mutex::new(None)),
+        });
+        let remote_sync = Arc::new(MockRemoteSync {
+            content: Arc::new(Mutex::new(None)),
+        });
+
+        let uni_clipboard = UniClipboardBuilder::new()
+            .set_local_clipboard(clipboard.clone())
+            .set_remote_sync(remote_sync.clone())
+            .build()
+            .expect("Failed to build UniClipboard");
+
+        assert!(uni_clipboard.start().await.is_ok());
+
+        // 模拟远程同步
+        let test_payload = Payload::new_text(
+            Bytes::from("Test content".to_string()),
+            "device_id".to_string(),
+            chrono::Utc::now(),
+        );
+        assert!(remote_sync.push(test_payload.clone()).await.is_ok());
+
+        // 等待同步
+        tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+
+        // 检查本地剪贴板是否已更新
+        let local_content = clipboard.content.lock().await;
+        assert_eq!(*local_content, Some(test_payload));
+
+        assert!(uni_clipboard.stop().await.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_uni_clipboard_pause_resume() {
+        let clipboard = Arc::new(MockLocalClipboard {
+            content: Arc::new(Mutex::new(None)),
+        });
+        let remote_sync = Arc::new(MockRemoteSync {
+            content: Arc::new(Mutex::new(None)),
+        });
+
+        let uni_clipboard = UniClipboardBuilder::new()
+            .set_local_clipboard(clipboard)
+            .set_remote_sync(remote_sync)
+            .build()
+            .expect("Failed to build UniClipboard");
+
+        assert!(uni_clipboard.start().await.is_ok());
+        assert!(uni_clipboard.pause().await.is_ok());
+        assert!(uni_clipboard.resume().await.is_ok());
+        assert!(uni_clipboard.stop().await.is_ok());
     }
 }

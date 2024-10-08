@@ -11,9 +11,9 @@ opt-level = "z"   # Optimize for binary size
 strip = true      # Remove debug symbols
 
 [features]
-clipboard_tests = []
-network_tests = []
 vendored_openssl = ["openssl-sys/vendored"]
+integration_tests = []
+network_tests = []
 hardware_tests = []
 testing = []
 

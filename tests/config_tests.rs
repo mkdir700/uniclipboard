@@ -36,7 +36,7 @@ fn test_load_config() {
 
     env::set_var("UNICLIPBOARD_CONFIG_PATH", config_path.to_str().unwrap());
 
-    let config = Config::load().unwrap();
+    let config = Config::load(Some(config_path.clone())).unwrap();
     assert_eq!(config.device_id, "test_device");
     assert_eq!(config.device_name, Some("测试设备".to_string()));
     assert_eq!(config.webdav_url, Some("https://example.com/webdav".to_string()));
@@ -89,11 +89,11 @@ fn test_save_config() {
     config.connect_websocket_server_addr = Some("connect.example.com".to_string());
     config.connect_websocket_server_port = Some(8117);
 
-    config.save().unwrap();
+    config.save(Some(config_path.clone())).unwrap();
 
     assert!(config_path.exists());
 
-    let saved_config = Config::load().unwrap();
+    let saved_config = Config::load(Some(config_path.clone())).unwrap();
     assert_eq!(saved_config.device_id, "save_test_device");
     assert_eq!(saved_config.device_name, Some("保存测试设备".to_string()));
     assert_eq!(saved_config.webdav_url, Some("https://save.example.com/webdav".to_string()));

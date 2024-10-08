@@ -33,6 +33,9 @@
         src="https://img.shields.io/github/v/release/mkdir700/uniclipboard?include_prereleases&style=flat-square"
       />
     </a >
+    <a href="https://codecov.io/gh/mkdir700/uniclipboard">
+      <img src="https://img.shields.io/codecov/c/github/mkdir700/uniclipboard/master?style=flat-square" />
+    </a>
     <a href="https://github.com/mkdir700/uniclipboard/releases">
       <img
         src="https://img.shields.io/github/downloads/mkdir700/uniclipboard/total?style=flat-square"

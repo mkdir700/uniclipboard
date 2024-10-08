@@ -107,17 +107,11 @@ impl Payload {
         })
     }
 
+    #[allow(dead_code)]
     pub fn get_content(&self) -> &Bytes {
         match self {
             Payload::Text(p) => &p.content,
             Payload::Image(p) => &p.content,
-        }
-    }
-
-    pub fn get_device_id(&self) -> &str {
-        match self {
-            Payload::Text(p) => &p.device_id,
-            Payload::Image(p) => &p.device_id,
         }
     }
 
@@ -140,6 +134,13 @@ impl Payload {
             Some(image)
         } else {
             None
+        }
+    }
+
+    pub fn get_device_id(&self) -> &str {
+        match self {
+            Payload::Text(p) => &p.device_id,
+            Payload::Image(p) => &p.device_id,
         }
     }
 
@@ -216,3 +217,11 @@ impl fmt::Display for Payload {
         }
     }
 }
+
+impl PartialEq for Payload {
+    fn eq(&self, other: &Self) -> bool {
+        self.get_key() == other.get_key()
+    }
+}
+
+impl Eq for Payload {}

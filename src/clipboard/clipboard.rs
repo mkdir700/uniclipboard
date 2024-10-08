@@ -1,43 +1,49 @@
+use crate::config::CONFIG;
+use crate::message::Payload;
 use anyhow::Result;
+use bytes::Bytes;
 use chrono::Utc;
 use clipboard_rs::common::RustImage;
-use clipboard_rs::{Clipboard, ClipboardContext, ClipboardHandler, RustImageData};
-#[cfg(target_os = "windows")]
-use clipboard_win::empty;
-#[cfg(target_os = "windows")]
-use clipboard_win::{formats, set_clipboard};
+use clipboard_rs::{Clipboard, ClipboardContext};
+use clipboard_rs::{ClipboardHandler, RustImageData};
 use image::GenericImageView;
 use image::{ImageBuffer, Rgba, RgbaImage};
-use log::{debug, info};
+use log::debug;
 use png::Encoder;
 use rayon::prelude::*;
 use std::io::Cursor;
 use std::sync::{Arc, Mutex};
 use tokio::sync::Notify;
-#[cfg(target_os = "windows")]
-use winapi::um::winuser::{CloseClipboard, OpenClipboard};
 
-// use super::utils::parallel_convert_image;
-use super::utils::PlatformImage;
-use crate::config::CONFIG;
-use crate::message::Payload;
-use bytes::Bytes;
-
-pub struct RsClipboard(Arc<Mutex<ClipboardContext>>, Arc<Notify>);
+pub struct RsClipboard(Arc<Mutex<dyn ClipboardContextTrait>>, Arc<Notify>);
 
 pub struct RsClipboardChangeHandler(Arc<Notify>);
 
-impl RsClipboard {
-    pub fn new(notify: Arc<Notify>) -> Result<Self> {
-        Ok(Self(
-            Arc::new(Mutex::new(ClipboardContext::new().map_err(|e| {
-                anyhow::anyhow!("Failed to create clipboard context: {}", e)
-            })?)),
-            notify,
-        ))
-    }
+pub struct ClipboardContextWrapper(ClipboardContext);
 
-    fn clipboard(&self) -> Arc<Mutex<ClipboardContext>> {
+// 定义一个 trait 来抽象 ClipboardContext 的行为
+pub trait ClipboardContextTrait: Send + Sync {
+    fn get_text(&self) -> Result<String>;
+    fn set_text(&self, text: String) -> Result<()>;
+    fn get_image(&self) -> Result<RustImageData>;
+    fn set_image(&self, image: RustImageData) -> Result<()>;
+}
+
+impl RsClipboardChangeHandler {
+    pub fn new(notify: Arc<Notify>) -> Self {
+        Self(notify)
+    }
+}
+
+impl ClipboardHandler for RsClipboardChangeHandler {
+    fn on_clipboard_change(&mut self) {
+        debug!("Clipboard changed");
+        self.0.notify_waiters();
+    }
+}
+
+impl RsClipboard {
+    fn clipboard(&self) -> Arc<Mutex<dyn ClipboardContextTrait>> {
         self.0.clone()
     }
 
@@ -72,7 +78,6 @@ impl RsClipboard {
         Ok(image)
     }
 
-    #[cfg(not(target_os = "windows"))]
     fn write_image(&self, image: RustImageData) -> Result<()> {
         let clipboard = self.clipboard();
         let guard = clipboard
@@ -83,88 +88,6 @@ impl RsClipboard {
             .map_err(|e| anyhow::anyhow!("Failed to set image: {}", e))
     }
 
-    #[cfg(target_os = "windows")]
-    fn write_image(&self, image: RustImageData) -> Result<()> {
-        let platform_image = PlatformImage::new(
-            image
-                .get_dynamic_image()
-                .map_err(|e| anyhow::anyhow!("Failed to get dynamic image: {}", e))?,
-        );
-        let bmp_bytes = platform_image.to_bitmap();
-        match set_clipboard(formats::Bitmap, &bmp_bytes) {
-            Ok(_) => Ok(()),
-            Err(e) => Err(anyhow::anyhow!("Failed to write image: {}", e)),
-        }
-    }
-    // fn write_image(&self, image: RustImageData) -> Result<()> {
-    //     Self::ensure_clipboard_open()?;
-    //     Self::empty_clipboard()?;
-
-    //     let rgba_image = image
-    //         .to_rgba8()
-    //         .map_err(|e| anyhow::anyhow!("转换图像到RGBA8失败: {}", e))?;
-    //     let (width, height) = rgba_image.dimensions();
-
-    //     // 创建 BITMAPINFOHEADER
-    //     let bi_size = mem::size_of::<BITMAPINFOHEADER>();
-    //     let bi = BITMAPINFOHEADER {
-    //         biSize: bi_size as u32,
-    //         biWidth: width as i32,
-    //         biHeight: -(height as i32), // 负高度表示自顶向下的位图
-    //         biPlanes: 1,
-    //         biBitCount: 32,
-    //         biCompression: BI_RGB,
-    //         biSizeImage: (width * height * 4) as u32,
-    //         biXPelsPerMeter: 0,
-    //         biYPelsPerMeter: 0,
-    //         biClrUsed: 0,
-    //         biClrImportant: 0,
-    //     };
-
-    //     // 计算 DIB 数据的总大小
-    //     let total_size = bi_size + (width * height * 4) as usize;
-
-    //     // 分配全局内存
-    //     let h_dib = unsafe { GlobalAlloc(GMEM_MOVEABLE, total_size) };
-    //     if h_dib.is_null() {
-    //         return Err(anyhow::anyhow!("分配全局内存失败"));
-    //     }
-
-    //     // 锁定内存并获取指针
-    //     let p_dib = unsafe { GlobalLock(h_dib) as *mut u8 };
-    //     if p_dib.is_null() {
-    //         unsafe { GlobalFree(h_dib) };
-    //         return Err(anyhow::anyhow!("锁定全局内存失败"));
-    //     }
-
-    //     unsafe {
-    //         // 复制 BITMAPINFOHEADER
-    //         std::ptr::copy_nonoverlapping(&bi as *const _ as *const u8, p_dib, bi_size);
-
-    //         // 复制像素数据（BGRA 格式）
-    //         let p_pixels = p_dib.add(bi_size);
-    //         for (i, pixel) in rgba_image.pixels().enumerate() {
-    //             *p_pixels.add(i * 4) = pixel[2]; // B
-    //             *p_pixels.add(i * 4 + 1) = pixel[1]; // G
-    //             *p_pixels.add(i * 4 + 2) = pixel[0]; // R
-    //             *p_pixels.add(i * 4 + 3) = pixel[3]; // A
-    //         }
-
-    //         // 解锁内存
-    //         GlobalUnlock(h_dib);
-
-    //         // 设置剪贴板数据
-    //         if SetClipboardData(CF_DIB as u32, h_dib).is_null() {
-    //             GlobalFree(h_dib);
-    //             return Err(anyhow::anyhow!("设置剪贴板数据失败"));
-    //         }
-    //     }
-
-    //     Ok(())
-    // }
-}
-
-impl RsClipboard {
     /// 并行转换图片为 png 格式
     fn parallel_convert_image(&self, image: RustImageData) -> Result<Vec<u8>> {
         let img = image
@@ -260,52 +183,270 @@ impl RsClipboard {
             }
         }
     }
-}
 
-impl RsClipboard {
     pub async fn wait_clipboard_change(&self) -> Result<()> {
         self.1.notified().await;
         Ok(())
     }
 }
 
-#[cfg(target_os = "windows")]
+impl ClipboardContextTrait for ClipboardContextWrapper {
+    fn get_text(&self) -> Result<String> {
+        self.0
+            .get_text()
+            .map_err(|e| anyhow::anyhow!("Failed to get text: {}", e))
+    }
+
+    fn set_text(&self, text: String) -> Result<()> {
+        self.0
+            .set_text(text)
+            .map_err(|e| anyhow::anyhow!("Failed to set text: {}", e))
+    }
+
+    fn get_image(&self) -> Result<RustImageData> {
+        self.0
+            .get_image()
+            .map_err(|e| anyhow::anyhow!("Failed to get image: {}", e))
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    fn set_image(&self, image: RustImageData) -> Result<()> {
+        self.0
+            .set_image(image)
+            .map_err(|e| anyhow::anyhow!("Failed to set image: {}", e))
+    }
+
+    #[cfg(target_os = "windows")]
+    fn set_image(&self, image: RustImageData) -> Result<()> {
+        use super::utils::PlatformImage;
+        use clipboard_win::{formats, set_clipboard};
+
+        let platform_image = PlatformImage::new(
+            image
+                .get_dynamic_image()
+                .map_err(|e| anyhow::anyhow!("Failed to get dynamic image: {}", e))?,
+        );
+        let bmp_bytes = platform_image.to_bitmap();
+        match set_clipboard(formats::Bitmap, &bmp_bytes) {
+            Ok(_) => Ok(()),
+            Err(e) => Err(anyhow::anyhow!("Failed to write image: {}", e)),
+        }
+    }
+}
+
 impl RsClipboard {
-    fn ensure_clipboard_open() -> Result<()> {
-        unsafe {
-            if OpenClipboard(std::ptr::null_mut()) == 0 {
-                return Err(anyhow::anyhow!("Failed to open clipboard"));
-            }
-        }
-        Ok(())
+    #[cfg(not(test))]
+    pub fn new(notify: Arc<Notify>) -> Result<Self> {
+        Ok(Self(
+            Arc::new(Mutex::new(ClipboardContextWrapper(
+                ClipboardContext::new()
+                    .map_err(|e| anyhow::anyhow!("Failed to create clipboard context: {}", e))?,
+            ))),
+            notify,
+        ))
     }
 
-    fn ensure_clipboard_closed() -> Result<()> {
-        unsafe {
-            if CloseClipboard() == 0 {
-                return Err(anyhow::anyhow!("Failed to close clipboard"));
-            }
-        }
-        Ok(())
-    }
-
-    fn empty_clipboard() -> Result<()> {
-        if empty().is_err() {
-            return Err(anyhow::anyhow!("Failed to empty clipboard"));
-        }
-        Ok(())
+    #[cfg(test)]
+    pub fn new(notify: Arc<Notify>) -> Result<Self> {
+        use self::mock::MockClipboardContext;
+        Ok(Self(
+            Arc::new(Mutex::new(MockClipboardContext::new())),
+            notify,
+        ))
     }
 }
 
-impl RsClipboardChangeHandler {
-    pub fn new(notify: Arc<Notify>) -> Self {
-        Self(notify)
+// 在 mock 模块中创建 MockClipboardContext
+#[cfg(test)]
+mod mock {
+    use super::*;
+    use image::{DynamicImage, ImageBuffer, Rgba};
+
+    pub struct MockClipboardContext {
+        text: Mutex<String>,
+        image: Mutex<Option<MockImageData>>,
+    }
+
+    #[derive(Clone)]
+    struct MockImageData {
+        width: u32,
+        height: u32,
+        data: Vec<u8>,
+    }
+
+    impl MockClipboardContext {
+        pub fn new() -> Self {
+            Self {
+                text: Mutex::new(String::new()),
+                image: Mutex::new(None),
+            }
+        }
+    }
+
+    impl ClipboardContextTrait for MockClipboardContext {
+        fn get_text(&self) -> Result<String> {
+            Ok(self.text.lock().unwrap().clone())
+        }
+
+        fn set_text(&self, text: String) -> Result<()> {
+            *self.text.lock().unwrap() = text;
+            Ok(())
+        }
+
+        fn get_image(&self) -> Result<RustImageData> {
+            let image_data = self.image.lock().unwrap().clone();
+            match image_data {
+                Some(data) => {
+                    let img = ImageBuffer::<Rgba<u8>, Vec<u8>>::from_raw(
+                        data.width,
+                        data.height,
+                        data.data,
+                    )
+                    .ok_or_else(|| anyhow::anyhow!("Failed to create image buffer"))?;
+                    let dynamic_image = DynamicImage::ImageRgba8(img);
+                    Ok(RustImageData::from_dynamic_image(dynamic_image))
+                }
+                None => Err(anyhow::anyhow!("No image")),
+            }
+        }
+
+        fn set_image(&self, image: RustImageData) -> Result<()> {
+            let dynamic_image = image.get_dynamic_image().unwrap();
+            let (width, height) = dynamic_image.dimensions();
+            let rgba_image = dynamic_image.to_rgba8();
+            let data = rgba_image.into_raw();
+
+            *self.image.lock().unwrap() = Some(MockImageData {
+                width,
+                height,
+                data,
+            });
+            Ok(())
+        }
     }
 }
 
-impl ClipboardHandler for RsClipboardChangeHandler {
-    fn on_clipboard_change(&mut self) {
-        debug!("Clipboard changed");
-        self.0.notify_waiters();
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    use std::fs;
+    use std::path::PathBuf;
+    use std::time::Duration;
+    use tokio::time::sleep;
+
+    #[tokio::test]
+    async fn test_read_write_text() {
+        let clipboard = RsClipboard::new(Arc::new(Notify::new())).unwrap();
+        clipboard.write_text("Hello, world!").unwrap();
+        let text = clipboard.read_text().unwrap();
+        assert_eq!(text, "Hello, world!");
+    }
+
+    #[tokio::test]
+    async fn test_read_write_image() {
+        let clipboard = RsClipboard::new(Arc::new(Notify::new())).unwrap();
+        // 从 test_resources 目录中读取图片
+        // 构建测试资源文件的路径
+        let mut test_image_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        test_image_path.push("test_resources");
+        test_image_path.push("moon.jpg");
+        // 判断文件是否存在
+        assert!(test_image_path.exists());
+        println!("test_image_path: {}", test_image_path.to_str().unwrap());
+
+        // let img = ImageReader::open(&test_image_path).unwrap().decode().unwrap();
+        let image_bytes = fs::read(&test_image_path).unwrap();
+        let image_data = RustImageData::from_bytes(&image_bytes).unwrap();
+        let size = image_data.get_size();
+
+        clipboard.write_image(image_data).unwrap();
+
+        let read_image = clipboard.read_image().unwrap();
+        assert_eq!(read_image.get_size(), size);
+    }
+
+    #[tokio::test]
+    async fn test_wait_clipboard_change() {
+        let notify = Arc::new(Notify::new());
+        let clipboard = RsClipboard::new(notify.clone()).unwrap();
+
+        // 创建一个任务来模拟剪贴板变化
+        let trigger_change = tokio::spawn(async move {
+            // 等待一小段时间，确保主任务已经开始等待
+            sleep(Duration::from_millis(100)).await;
+            notify.notify_one();
+        });
+
+        // 等待剪贴板变化
+        let wait_result =
+            tokio::time::timeout(Duration::from_secs(1), clipboard.wait_clipboard_change()).await;
+
+        // 确保触发任务完成
+        trigger_change.await.unwrap();
+
+        // 检查是否成功等待到剪贴板变化
+        assert!(
+            wait_result.is_ok(),
+            "Timed out waiting for clipboard change"
+        );
+        assert!(
+            wait_result.unwrap().is_ok(),
+            "Error while waiting for clipboard change"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_write_read_payload_text() {
+        let clipboard = RsClipboard::new(Arc::new(Notify::new())).unwrap();
+        let text = "Hello, Payload!";
+        let payload = Payload::new_text(
+            Bytes::from(text.to_string()),
+            "test_device".to_string(),
+            Utc::now(),
+        );
+        clipboard.write(payload).unwrap();
+
+        let read_payload = clipboard.read().unwrap();
+        match read_payload {
+            Payload::Text(text_payload) => {
+                assert_eq!(text_payload.content, Bytes::from(text.to_string()));
+            }
+            _ => panic!("Expected text payload"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_write_read_payload_image() {
+        let clipboard = RsClipboard::new(Arc::new(Notify::new())).unwrap();
+        let mut test_image_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        test_image_path.push("test_resources");
+        test_image_path.push("google.png");
+
+        let image_bytes = fs::read(&test_image_path).unwrap();
+        let image_data = RustImageData::from_bytes(&image_bytes).unwrap();
+        let (width, height) = image_data.get_size();
+
+        let payload = Payload::new_image(
+            Bytes::from(image_bytes.clone()),
+            "test_device".to_string(),
+            Utc::now(),
+            width as usize,
+            height as usize,
+            "png".to_string(),
+            image_bytes.len(),
+        );
+
+        clipboard.write(payload).unwrap();
+
+        let read_payload = clipboard.read().unwrap();
+        match read_payload {
+            Payload::Image(image_payload) => {
+                assert_eq!(image_payload.width, width as usize);
+                assert_eq!(image_payload.height, height as usize);
+                assert_eq!(image_payload.format, "png");
+            }
+            _ => panic!("Expected image payload"),
+        }
     }
 }

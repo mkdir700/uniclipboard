@@ -12,6 +12,20 @@ pub fn generate_device_id() -> String {
     format!("{:06}", random_number)
 }
 
-// // 使用示例
-// let key_str = "我的密钥";
-// let key_bytes: [u8; 32] = string_to_32_bytes(key_str);
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_string_to_32_bytes() {
+        let input = "test";
+        let output = string_to_32_bytes(input);
+        assert_eq!(output.len(), 32);
+    }
+
+    #[test]
+    fn test_generate_device_id() {
+        let id = generate_device_id();
+        assert_eq!(id.len(), 6);
+    }
+}
