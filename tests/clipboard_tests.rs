@@ -1,10 +1,13 @@
+use std::time::Duration;
+
 use bytes::Bytes;
 use chrono::Utc;
 use serial_test::serial;
+use tokio::time::sleep;
 use uniclipboard::{LocalClipboard, Payload, LocalClipboardTrait};
 
 #[tokio::test]
-#[cfg_attr(not(feature = "clipboard_tests"), ignore)]
+#[cfg_attr(not(feature = "integration_tests"), ignore)]
 #[serial]
 async fn test_local_clipboard_write_and_read() {
     let handler = LocalClipboard::new();
@@ -26,7 +29,7 @@ async fn test_local_clipboard_write_and_read() {
 }
 
 #[tokio::test]
-#[cfg_attr(not(feature = "clipboard_tests"), ignore)]
+#[cfg_attr(not(feature = "integration_tests"), ignore)]
 #[serial]
 async fn test_local_clipboard_pull() {
     let handler = LocalClipboard::new();
@@ -61,4 +64,102 @@ async fn test_local_clipboard_pull() {
 
     assert_eq!(*pulled_payload.get_content(), Bytes::from("456"));
     // assert_eq!(pulled_payload.get_device_id(), "local");
+}
+
+#[tokio::test]
+#[cfg_attr(not(feature = "integration_tests"), ignore)]
+#[serial]
+async fn test_start_monitoring() {
+    // 创建 LocalClipboard 实例
+    let local_clipboard = LocalClipboard::new();
+
+    // 启动监控
+    let mut receiver = local_clipboard.start_monitoring().await.expect("Failed to start monitoring");
+
+    // 等待一小段时间，确保监控已经启动
+    sleep(Duration::from_millis(100)).await;
+
+    // 准备测试数据
+    let test_content = "测试剪贴板内容";
+    let payload = Payload::new_text(Bytes::from(test_content), "test_device".to_string(), Utc::now());
+
+    // 模拟剪贴板变化
+    local_clipboard.set_clipboard_content(payload.clone()).await.expect("Failed to set clipboard content");
+
+    // 等待一小段时间，确保变化被检测到
+    sleep(Duration::from_millis(100)).await;
+
+    // 尝试接收变化通知
+    match tokio::time::timeout(Duration::from_secs(5), receiver.recv()).await {
+        Ok(Some(received_payload)) => {
+            assert_eq!(received_payload.get_content(), payload.get_content());
+        },
+        Ok(None) => panic!("Channel closed unexpectedly"),
+        Err(_) => panic!("Timeout waiting for clipboard change"),
+    }
+
+    // 停止监控
+    local_clipboard.stop_monitoring().await.expect("Failed to stop monitoring");
+}
+
+
+#[tokio::test]
+#[cfg_attr(not(feature = "integration_tests"), ignore)]
+#[serial]
+async fn test_pause_and_resume() {
+    // 创建 LocalClipboard 实例
+    let local_clipboard = LocalClipboard::new();
+
+    // 启动监控
+    let mut receiver = local_clipboard.start_monitoring().await.expect("Failed to start monitoring");
+
+    // 等待一小段时间，确保监控已经启动
+    sleep(Duration::from_millis(100)).await;
+
+    // 准备测试数据
+    let test_content1 = "测试内容1";
+    let payload1 = Payload::new_text(Bytes::from(test_content1), "test_device".to_string(), Utc::now());
+
+    // 设置剪贴板内容
+    local_clipboard.set_clipboard_content(payload1.clone()).await.expect("Failed to set clipboard content");
+
+    // 等待并接收第一次变化
+    let received_payload1 = tokio::time::timeout(Duration::from_secs(5), receiver.recv()).await
+        .expect("Timeout waiting for clipboard change")
+        .expect("Channel closed unexpectedly");
+    assert_eq!(received_payload1.get_content(), payload1.get_content());
+
+    // 暂停监控
+    local_clipboard.pause().await;
+
+    // 准备新的测试数据
+    let test_content2 = "test content 2";
+    let payload2 = Payload::new_text(Bytes::from(test_content2), "test_device".to_string(), Utc::now());
+
+    // 在暂停状态下设置剪贴板内容
+    local_clipboard.set_clipboard_content(payload2.clone()).await.expect("Failed to set clipboard content");
+
+    // 尝试接收变化，应该超时
+    let timeout_result = tokio::time::timeout(Duration::from_secs(1), receiver.recv()).await;
+    // 打印接收的内容
+    assert!(timeout_result.is_err(), "Received unexpected clipboard change while paused");
+
+    // 恢复监控
+    local_clipboard.resume().await;
+
+    // 准备新的测试数据
+    let test_content3 = "测试内容3";
+    let payload3 = Payload::new_text(Bytes::from(test_content3), "test_device".to_string(), Utc::now());
+
+    // 在恢复状态下设置剪贴板内容
+    local_clipboard.set_clipboard_content(payload3.clone()).await.expect("Failed to set clipboard content");
+
+    // 等待并接收恢复后的变化
+    let received_payload3 = tokio::time::timeout(Duration::from_secs(5), receiver.recv()).await
+        .expect("Timeout waiting for clipboard change after resume")
+        .expect("Channel closed unexpectedly");
+    assert_eq!(received_payload3.get_content(), payload3.get_content());
+
+    // 停止监控
+    local_clipboard.stop_monitoring().await.expect("Failed to stop monitoring");
 }

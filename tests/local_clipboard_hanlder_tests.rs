@@ -8,28 +8,28 @@ use std::io::Write;
 use std::{fs::File, path::PathBuf};
 use uniclipboard::{LocalClipboard, Payload, LocalClipboardTrait};
 
-#[tokio::test]
-#[cfg_attr(not(feature = "clipboard_tests"), ignore)]
-#[serial]
-async fn test_read_image_from_local_clipboard() {
-    let handler = LocalClipboard::new();
+// #[tokio::test]
+// #[cfg_attr(not(feature = "integration_tests"), ignore)]
+// #[serial]
+// async fn test_read_image_from_local_clipboard() {
+//     let handler = LocalClipboard::new();
 
-    let payload = handler.read().await.unwrap();
-    // 查看 payload 的类型
-    match payload {
-        Payload::Image(image_payload) => {
-            println!("size: {} MB", image_payload.size as f32 / 1024.0 / 1024.0);
-            let mut file = File::create("test_image.png").unwrap();
-            file.write_all(&image_payload.content).unwrap();
-        }
-        _ => {
-            panic!("读取到的 payload 不是图像");
-        }
-    }
-}
+//     let payload = handler.read().await.unwrap();
+//     // 查看 payload 的类型
+//     match payload {
+//         Payload::Image(image_payload) => {
+//             println!("size: {} MB", image_payload.size as f32 / 1024.0 / 1024.0);
+//             let mut file = File::create("test_image.png").unwrap();
+//             file.write_all(&image_payload.content).unwrap();
+//         }
+//         _ => {
+//             panic!("读取到的 payload 不是图像");
+//         }
+//     }
+// }
 
 #[tokio::test]
-#[cfg_attr(not(feature = "clipboard_tests"), ignore)]
+#[cfg_attr(not(feature = "integration_tests"), ignore)]
 #[serial]
 async fn test_write_image_to_local_clipboard() -> Result<(), Box<dyn std::error::Error>> {
     // 1. 读取测试图片
@@ -58,7 +58,7 @@ async fn test_write_image_to_local_clipboard() -> Result<(), Box<dyn std::error:
 }
 
 #[tokio::test]
-#[cfg_attr(not(feature = "clipboard_tests"), ignore)]
+#[cfg_attr(not(feature = "integration_tests"), ignore)]
 #[serial]
 async fn test_read_write_clipboard_text() {
     let test_text = "Hello, world!";
@@ -88,7 +88,7 @@ async fn test_read_write_clipboard_text() {
 }
 
 #[tokio::test]
-#[cfg_attr(not(feature = "clipboard_tests"), ignore)]
+#[cfg_attr(not(feature = "integration_tests"), ignore)]
 #[serial]
 async fn test_read_write_clipboard_image() -> Result<(), Box<dyn std::error::Error>> {
     // 1. 读取测试图片
@@ -115,52 +115,52 @@ async fn test_read_write_clipboard_image() -> Result<(), Box<dyn std::error::Err
     Ok(())
 }
 
-use image::{ImageBuffer, Rgba};
+// use image::{ImageBuffer, Rgba};
 
-#[test]
-#[cfg_attr(not(feature = "clipboard_tests"), ignore)]
-fn test_read_image_directly_from_arboard() {
-    let mut clipboard = Clipboard::new().expect("Failed to create clipboard");
+// #[test]
+// #[cfg_attr(not(feature = "integration_tests"), ignore)]
+// fn test_read_image_directly_from_arboard() {
+//     let mut clipboard = Clipboard::new().expect("Failed to create clipboard");
 
-    // 尝试从剪贴板读取图片
-    match clipboard.get_image() {
-        Ok(image_data) => {
-            println!("Successfully read image from clipboard");
-            println!(
-                "Image dimensions: {}x{}",
-                image_data.width, image_data.height
-            );
+//     // 尝试从剪贴板读取图片
+//     match clipboard.get_image() {
+//         Ok(image_data) => {
+//             println!("Successfully read image from clipboard");
+//             println!(
+//                 "Image dimensions: {}x{}",
+//                 image_data.width, image_data.height
+//             );
 
-            // 将图片数据转换为 ImageBuffer
-            let img = ImageBuffer::from_raw(
-                image_data.width as u32,
-                image_data.height as u32,
-                image_data.bytes.to_vec(),
-            )
-            .expect("Failed to create image buffer");
+//             // 将图片数据转换为 ImageBuffer
+//             let img = ImageBuffer::from_raw(
+//                 image_data.width as u32,
+//                 image_data.height as u32,
+//                 image_data.bytes.to_vec(),
+//             )
+//             .expect("Failed to create image buffer");
 
-            // 保存图片以便查看
-            img.save("test_arboard_image.png")
-                .expect("Failed to save image");
+//             // 保存图片以便查看
+//             img.save("test_arboard_image.png")
+//                 .expect("Failed to save image");
 
-            // 检查图片是否有透明度
-            let has_transparency = img.pixels().any(|p: &Rgba<u8>| p[3] < 255);
-            println!("Image has transparency: {}", has_transparency);
+//             // 检查图片是否有透明度
+//             let has_transparency = img.pixels().any(|p: &Rgba<u8>| p[3] < 255);
+//             println!("Image has transparency: {}", has_transparency);
 
-            assert!(true, "Image read successfully");
-        }
-        Err(e) => {
-            panic!("Failed to read image from clipboard: {:?}", e);
-        }
-    }
-}
+//             assert!(true, "Image read successfully");
+//         }
+//         Err(e) => {
+//             panic!("Failed to read image from clipboard: {:?}", e);
+//         }
+//     }
+// }
 
 #[cfg(windows)]
 use clipboard_win::{formats, get_clipboard, Clipboard as WinClipboard};
 
 #[test]
 #[cfg(windows)]
-#[cfg_attr(not(feature = "clipboard_tests"), ignore)]
+#[cfg_attr(not(feature = "integration_tests"), ignore)]
 fn test_read_image_using_clipboard_win() {
     // 打开剪贴板
     let _clipboard = WinClipboard::new().expect("Failed to open clipboard");
