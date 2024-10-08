@@ -218,7 +218,7 @@ impl ClipboardContextTrait for ClipboardContextWrapper {
 
     #[cfg(target_os = "windows")]
     fn set_image(&self, image: RustImageData) -> Result<()> {
-        use super::super::utils::PlatformImage;
+        use super::utils::PlatformImage;
         use clipboard_win::{formats, set_clipboard};
 
         let platform_image = PlatformImage::new(

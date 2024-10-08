@@ -6,7 +6,7 @@ use serial_test::serial;
 use std::fs;
 use std::io::Write;
 use std::{fs::File, path::PathBuf};
-use uniclipboard::{LocalClipboard, Payload, LocalClipboardTrait};
+use uniclipboard::{LocalClipboard, LocalClipboardTrait, Payload};
 
 // #[tokio::test]
 // #[cfg_attr(not(feature = "integration_tests"), ignore)]
@@ -163,6 +163,8 @@ use clipboard_win::{formats, get_clipboard, Clipboard as WinClipboard};
 #[cfg_attr(not(feature = "integration_tests"), ignore)]
 fn test_read_image_using_clipboard_win() {
     // 打开剪贴板
+
+    use image::Rgba;
     let _clipboard = WinClipboard::new().expect("Failed to open clipboard");
 
     // 尝试从剪贴板读取位图
