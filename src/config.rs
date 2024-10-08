@@ -1,3 +1,4 @@
+use crate::utils::generate_device_id;
 use anyhow::{Context, Result};
 use once_cell::sync::Lazy;
 use serde::{Deserialize, Serialize};
@@ -5,7 +6,6 @@ use std::env;
 use std::fs;
 use std::path::PathBuf;
 use std::sync::RwLock;
-use crate::utils::generate_device_id;
 
 pub static CONFIG: Lazy<RwLock<Config>> = Lazy::new(|| RwLock::new(Config::default()));
 
@@ -100,9 +100,14 @@ impl Config {
         }
     }
 
-    pub fn load() -> Result<Self> {
-        let config_path = get_config_path()?;
-        if let Some(config_str) = fs::read_to_string(&config_path).ok() {
+    pub fn load(config_path: Option<PathBuf>) -> Result<Self> {
+        let _config_path = if let Some(path) = config_path {
+            path
+        } else {
+            get_config_path()?
+        };
+
+        if let Some(config_str) = fs::read_to_string(&_config_path).ok() {
             let mut config: Config =
                 toml::from_str(&config_str).with_context(|| "Could not parse config file")?;
             config.merge_with_default();
@@ -113,15 +118,22 @@ impl Config {
         }
     }
 
-    pub fn save(&self) -> Result<()> {
+    pub fn save(&self, config_path: Option<PathBuf>) -> Result<()> {
         if self.max_history_size.is_none() || self.max_history_size.unwrap() <= 1 {
             anyhow::bail!("max_history must be greater than 1");
         }
-        let config_path = get_config_path()?;
-        let config_str = toml::to_string(self)?;
-        fs::create_dir_all(config_path.parent().unwrap())?;
-        fs::write(&config_path, config_str)
-            .with_context(|| format!("Could not write config file: {:?}", config_path))?;
+        if let Some(config_path) = config_path {
+            let config_str = toml::to_string(self)?;
+            fs::create_dir_all(config_path.parent().unwrap())?;
+            fs::write(&config_path, config_str)
+                .with_context(|| format!("Could not write config file: {:?}", config_path))?;
+        } else {
+            let config_path = get_config_path()?;
+            let config_str = toml::to_string(self)?;
+            fs::create_dir_all(config_path.parent().unwrap())?;
+            fs::write(&config_path, config_str)
+                .with_context(|| format!("Could not write config file: {:?}", config_path))?;
+        }
         CONFIG.write().unwrap().clone_from(self);
         Ok(())
     }
@@ -132,15 +144,16 @@ impl Config {
 }
 
 /// 获取配置文件路径
-/// 
+///
 /// 优先从环境变量中获取，如果没有设置环境变量，则从系统配置目录中获取
-/// 
+///
 /// Returns:
-/// 
+///
 /// - 如果获取到配置文件路径，则返回该路径
 /// - 如果获取不到配置文件路径，则返回错误
 pub fn get_config_path() -> Result<PathBuf> {
     if let Ok(path) = env::var("UNICLIPBOARD_CONFIG_PATH") {
+        println!("UNICLIPBOARD_CONFIG_PATH: {}", path);
         return Ok(PathBuf::from(path));
     }
 

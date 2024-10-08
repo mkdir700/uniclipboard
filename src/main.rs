@@ -53,11 +53,11 @@ async fn main() -> Result<()> {
     display_banner();
 
     let args = parse_args();
-    let mut config = Config::load()?;
+    let mut config = Config::load(None)?;
     if args.interactive {
         interactive_input(&mut config)?;
     }
-    config.save()?;
+    config.save(None)?;
 
     let key_mouse_monitor = Arc::new(KeyMouseMonitor::new(Duration::from_secs(
         config.key_mouse_monitor_sleep_timeout.unwrap(),
