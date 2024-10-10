@@ -30,6 +30,7 @@ chocolateys:
       {{ .ProjectName }} installer package.
       UniClipboard is a clipboard sharing tool designed to create a seamless clipboard experience across multiple devices.
     release_notes: "https://github.com/mkdir700/uniclipboard/releases/tag/v{{ .Version }}"
+    url_template: "https://github.com/mkdir700/uniclipboard/releases/download/"
     api_key: "{{ .Env.CHOCOLATEY_API_KEY }}"
     skip_publish: true # 在windows上发布
 

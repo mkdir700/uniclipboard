@@ -4,7 +4,7 @@ on:
   push:
     tags:
       - "v*" # 匹配所有以 v 开头的标签
-      - "beta-v*" # 匹配所有以 beta-v 开头的标签
+      - "v[0-9]+.[0-9]+.[0-9]+-beta.[0-9]+" # v1.0.0-beta.1
   workflow_dispatch:
     inputs:
       draft:
