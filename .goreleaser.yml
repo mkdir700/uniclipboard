@@ -1,83 +1,45 @@
 project_name: uniclipboard
+
 builds:
-  - main: .
-    binary: uniclipboard
-    goos:
-      - linux
-      - darwin
-      - windows
+  - main: dummy.go
     goarch:
       - amd64
       - arm64
-    env:
-      - CARGO_PROFILE_RELEASE_LTO=true
-      - CARGO_PROFILE_RELEASE_CODEGEN_UNITS=1
+    binary: uniclipboard
     hooks:
-      pre:
-        - cargo build --release
-      post:
-        - echo "Build completed"
+      post: sh ./scripts/build-cross-release.sh
+    ignore:
+      - goos: windows
+        goarch: arm64
+      - goos: linux
+        goarch: arm64
 
 archives:
-  - format: tar.gz
-    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
-    files:
-      - target/release/{{ .ProjectName }}
-
-checksum:
-  name_template: "{{ .ProjectName }}_{{ .Version }}_checksums.txt"
-
-changelog:
-  sort: asc
-  filters:
-    exclude:
-      - '^docs:'
-      - '^test:'
-
-release:
-  github:
-    owner: mkdir700
-    name: uniclipboard
-
-brews:
-  - name: uniclipboard
-    tap:
-      owner: mkdir700
-      name: homebrew-tap
-    folder: Formula
-    homepage: "https://github.com/mkdir700/uniclipboard"
-    description: "A tool to share clipboard content across different devices and platforms"
-    license: "MIT"
-
-scoop:
-  bucket:
-    owner: mkdir700
-    name: scoop-bucket
-  homepage: "https://github.com/mkdir700/uniclipboard"
-  description: "A tool to share clipboard content across different devices and platforms"
-  license: MIT
+  - format: binary
+    builds_info:
+      mode: 0755
 
 nfpms:
-  - file_name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
-    homepage: "https://github.com/mkdir700/uniclipboard"
-    description: "A tool to share clipboard content across different devices and platforms"
-    maintainer: "mkdir700 <mkdir700@gmail.com>"
-    license: "MIT"
+  - id: uniclipboard
+    package_name: uniclipboard
+    file_name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Arch }}"
+    vendor: mkdir700
+    homepage: https://github.com/mkdir700/uniclipboard
+    maintainer: mkdir700 <mkdir700@gmail.com>
+    description: A clipboard sharing tool designed to create a seamless clipboard experience
+    license: Apache-2.0
     formats:
       - deb
       - rpm
-    dependencies:
-      - git
+    bindir: /usr/bin
 
-chocolateys:
-  - name: uniclipboard
-    authors: mkdir700
-    project_url: "https://github.com/mkdir700/uniclipboard"
-    license_url: "https://github.com/mkdir700/uniclipboard/blob/main/LICENSE"
-    project_source_url: "https://github.com/mkdir700/uniclipboard"
-    docs_url: "https://github.com/mkdir700/uniclipboard/blob/main/README.md"
-    bug_tracker_url: "https://github.com/mkdir700/uniclipboard/issues"
-    summary: A tool to share clipboard content across different devices and platforms
-    description: |
-      UniClipboard is a tool that allows you to share clipboard content across different devices and platforms.
-    tags: "clipboard|utility|cross-platform"
+release:
+  draft: true
+  replace_existing_draft: true
+  replace_existing_artifacts: true
+# changelog:
+#   sort: asc
+#   filters:
+#     exclude:
+#       - '^docs:'
+#       - '^test:'
