@@ -1,0 +1,39 @@
+project_name: uniclipboard
+
+builds:
+  - main: dummy.go
+    goarch:
+      - amd64
+    goos:
+      - windows
+    binary: uniclipboard
+    hooks:
+      post:
+        - powershell.exe -ExecutionPolicy Bypass -File .\scripts\replace-bin.ps1
+
+archives:
+  - format: zip
+
+chocolateys:
+  - name: uniclipboard
+    owners: mkdir700
+    title: UniClipboard
+    authors: mkdir700
+    project_url: https://github.com/mkdir700/uniclipboard
+    license_url: https://github.com/mkdir700/uniclipboard/blob/main/LICENSE
+    project_source_url: https://github.com/mkdir700/uniclipboard
+    docs_url: https://github.com/mkdir700/uniclipboard/blob/main/README.md
+    bug_tracker_url: https://github.com/mkdir700/uniclipboard/issues
+    tags: "clipboard sharing tool"
+    summary: A clipboard sharing tool designed to create a seamless clipboard experience
+    description: |
+      {{ .ProjectName }} installer package.
+      UniClipboard is a clipboard sharing tool designed to create a seamless clipboard experience across multiple devices.
+    release_notes: "https://github.com/mkdir700/uniclipboard/releases/tag/v{{ .Version }}"
+    api_key: "{{ .Env.CHOCOLATEY_API_KEY }}"
+    skip_publish: false # 在windows上发布
+
+release:
+  draft: true
+  replace_existing_draft: true
+  replace_existing_artifacts: true

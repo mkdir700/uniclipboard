@@ -76,9 +76,23 @@ jobs:
           target: ${{ matrix.platform.target }}
           components: rustfmt, clippy
 
+      # Linux & Windows 构建，缓存依赖
+      - name: Cache dependencies for ${{ matrix.platform.name }}
+        if: ${{ !contains(matrix.platform.target, 'apple') }}
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo
+            target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-
+
       - name: Build ${{ matrix.platform.name }} binary
         if: ${{ !contains(matrix.platform.target, 'apple') }}
         uses: actions-rs/cargo@v1
+        env:
+          CARGO_BUILD_JOBS: 4
         # We use cross-rs if not running on x86_64 architecture on Linux
         with:
           command: build
@@ -93,12 +107,27 @@ jobs:
         with:
           username: ${{ env.DOCKER_LOGIN }}
           password: ${{ env.DOCKER_TOKEN }}
+
+      - name: Cache Cargo and build directories
+        if: contains(matrix.platform.target, 'apple')
+        uses: actions/cache@v3
+        with:
+          path: |
+            target
+          key: ${{ runner.os }}-${{ matrix.platform.target }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-${{ matrix.platform.target }}-cargo-
+
       - name: Build ${{ matrix.platform.name }} binary
         if: contains(matrix.platform.target, 'apple')
         # We use a dedicated Rust image containing required Apple libraries to cross-compile on multiple archs
         run: |
-          docker run --rm --volume "${PWD}":/root/src --workdir /root/src joseluisq/rust-linux-darwin-builder:$RUST_VERSION \
-          sh -c "CC=o64-clang CXX=o64-clang++ cargo build $BUILD_ARGS --target ${{ matrix.platform.target }}"
+          docker run --rm \
+            --volume "${PWD}":/root/src \
+            --volume "${PWD}/target":/root/src/target \
+            --workdir /root/src \
+            joseluisq/rust-linux-darwin-builder:${{ env.RUST_VERSION }} \
+            sh -c "CC=o64-clang CXX=o64-clang++ RUSTFLAGS='-C linker=o64-clang' cargo build ${{ env.BUILD_ARGS }} --target ${{ matrix.platform.target }}"
 
       - name: Store artifact
         uses: actions/upload-artifact@v4
@@ -161,7 +190,7 @@ jobs:
         with:
           distribution: goreleaser
           version: latest
-          args: release --skip=validate --debug
+          args: release --skip=validate --debug --config .goreleaser.yml
         env:
           GITHUB_TOKEN: ${{ secrets.GH_TOKEN_RUST_CROSS }}
 
@@ -171,3 +200,68 @@ jobs:
           ls -R artifacts/
           echo "Contents of dist directory:"
           ls -R dist/
+
+  release-for-windows:
+    name: Release for Windows
+    needs: [build]
+    if: startsWith(github.ref, 'refs/tags/') || (github.event_name == 'workflow_dispatch' && github.event.inputs.release == 'true')
+    runs-on: windows-latest
+    steps:
+      - name: Checkout Git repo
+        uses: actions/checkout@v3
+
+      - name: Install Chocolatey
+        run: |
+          Set-ExecutionPolicy Bypass -Scope Process -Force; 
+          [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor 3072; 
+          iex ((New-Object System.Net.WebClient).DownloadString('https://community.chocolatey.org/install.ps1'))
+        shell: powershell
+
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Set up Go
+        uses: actions/setup-go@v4
+
+      - name: Set release version
+        run: |
+          if ("${{ github.event_name }}" -eq "workflow_dispatch") {
+            echo "RELEASE_VERSION=${{ github.event.inputs.version }}" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          } else {
+            echo "RELEASE_VERSION=$($env:GITHUB_REF -replace 'refs/tags/','')" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          }
+        shell: powershell
+
+      - name: Create temporary tag
+        if: github.event_name == 'workflow_dispatch'
+        run: |
+          git config user.name github-actions
+          git config user.email github-actions@github.com
+          git tag -a ${{ github.event.inputs.version }} -m "Release ${{ github.event.inputs.version }}"
+        shell: powershell
+
+      - name: Display replace-bin.ps1 content
+        run: |
+          Write-Host "Content of replace-bin.ps1:"
+          Get-Content -Path .\scripts\replace-bin.ps1
+        shell: powershell
+
+      - name: Run GoReleaser for Windows
+        uses: goreleaser/goreleaser-action@v5
+        with:
+          distribution: goreleaser
+          version: latest
+          args: release --config .goreleaser-win.yml --skip=validate --debug
+        env:
+          GITHUB_TOKEN: ${{ secrets.GH_TOKEN_RUST_CROSS }}
+          CHOCOLATEY_API_KEY: ${{ secrets.CHOCOLATEY_API_KEY }}
+
+      - name: Debug Artifacts and Dist (After)
+        run: |
+          echo "Contents of artifacts directory:"
+          Get-ChildItem -Recurse artifacts
+          echo "Contents of dist directory:"
+          Get-ChildItem -Recurse dist
+        shell: powershell
