@@ -1,3 +1,4 @@
+use super::traits::LocalClipboardTrait;
 use crate::clipboard::{RsClipboard, RsClipboardChangeHandler};
 use crate::message::Payload;
 use anyhow::Result;
@@ -8,9 +9,8 @@ use log::debug;
 use log::error;
 use std::sync::{Arc, Mutex};
 use std::thread;
-use tokio::sync::Mutex as TokioMutex;
 use tokio::sync::{mpsc, Notify};
-use super::traits::LocalClipboardTrait;
+use tokio::sync::{Mutex as TokioMutex, RwLock};
 
 #[derive(Clone)]
 pub struct LocalClipboard {
@@ -19,6 +19,7 @@ pub struct LocalClipboard {
     stopped: Arc<TokioMutex<bool>>,
     watcher: Arc<Mutex<ClipboardWatcherContext<RsClipboardChangeHandler>>>,
     watcher_shutdown: Arc<TokioMutex<Option<WatcherShutdown>>>,
+    rw_lock: Arc<RwLock<bool>>,
 }
 
 impl LocalClipboard {
@@ -37,9 +38,9 @@ impl LocalClipboard {
             stopped: Arc::new(TokioMutex::new(false)),
             watcher: Arc::new(Mutex::new(watcher)),
             watcher_shutdown: Arc::new(TokioMutex::new(Some(watcher_shutdown))),
+            rw_lock: Arc::new(RwLock::new(false)),
         }
     }
-
 }
 
 #[async_trait]
@@ -56,11 +57,17 @@ impl LocalClipboardTrait for LocalClipboard {
     }
 
     async fn read(&self) -> Result<Payload> {
-        self.rs_clipboard.read()
+        let reading_lock = self.rw_lock.read().await;
+        let payload = self.rs_clipboard.read()?;
+        drop(reading_lock);
+        Ok(payload)
     }
 
     async fn write(&self, payload: Payload) -> Result<()> {
-        self.rs_clipboard.write(payload)
+        let writing_lock = self.rw_lock.write().await;
+        self.rs_clipboard.write(payload)?;
+        drop(writing_lock);
+        Ok(())
     }
 
     async fn start_monitoring(&self) -> Result<mpsc::Receiver<Payload>> {
