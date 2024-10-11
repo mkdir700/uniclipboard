@@ -22,11 +22,11 @@ on:
       prerelease:
         description: "是否为预发布版本"
         type: boolean
-        default: false
+        default: true
       test-workflow:
         description: "是否为测试工作流程"
         type: boolean
-        default: false
+        default: true
 
 env:
   # Define the rust version to use
