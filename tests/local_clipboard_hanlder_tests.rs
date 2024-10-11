@@ -115,6 +115,57 @@ async fn test_read_write_clipboard_image() -> Result<(), Box<dyn std::error::Err
     Ok(())
 }
 
+// 尝试读取两张图片，先写入一张，再写入另一张，然后再读取
+#[tokio::test]
+#[cfg_attr(not(feature = "integration_tests"), ignore)]
+#[serial]
+async fn test_write_two_images_and_read() -> Result<(), Box<dyn std::error::Error>> {
+    let local_handler = LocalClipboard::new();
+    // 1. 读取测试图片
+    let image_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("test_resources")
+        .join("2048.jpeg");
+
+    let img = ImageReader::open(&image_path)?.decode()?;
+    let (width, height) = (img.width(), img.height());
+    let image_bytes = fs::read(&image_path)?;
+
+    // 创建 Payload
+    let payload = Payload::new_image(
+        Bytes::from(image_bytes.clone()),
+        "test_device".to_string(),
+        Utc::now(),
+        width as usize,
+        height as usize,
+        "jpeg".to_string(),
+        image_bytes.len(),
+    );
+    local_handler.write(payload).await?;
+
+    let img2_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("test_resources")
+        .join("google.png");
+    let img2 = ImageReader::open(&img2_path)?.decode()?;
+    let (width2, height2) = (img2.width(), img2.height());
+    let image_bytes2 = fs::read(&img2_path)?;
+    let payload2 = Payload::new_image(
+        Bytes::from(image_bytes2.clone()),
+        "test_device".to_string(),
+        Utc::now(),
+        width2 as usize,
+        height2 as usize,
+        "png".to_string(),
+        image_bytes2.len(),
+    );
+    local_handler.write(payload2.clone()).await?;
+
+    let read_payload = local_handler.read().await?;
+    println!("read_payload: {}", read_payload);
+    println!("payload2: {}", payload2);
+    assert!(payload2.is_duplicate(&read_payload));
+    Ok(())
+}
+
 // use image::{ImageBuffer, Rgba};
 
 // #[test]

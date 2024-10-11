@@ -18,7 +18,7 @@ pub struct UniClipboard {
     key_mouse_monitor: Option<Arc<dyn KeyMouseMonitorTrait>>,
     is_running: Arc<RwLock<bool>>,
     is_paused: Arc<RwLock<bool>>,
-    last_content: Arc<RwLock<Option<Payload>>>,
+    last_payload: Arc<RwLock<Option<Payload>>>,
 }
 
 impl UniClipboard {
@@ -33,7 +33,7 @@ impl UniClipboard {
             key_mouse_monitor,
             is_running: Arc::new(RwLock::new(false)),
             is_paused: Arc::new(RwLock::new(false)),
-            last_content: Arc::new(RwLock::new(None)),
+            last_payload: Arc::new(RwLock::new(None)),
         }
     }
 
@@ -81,12 +81,12 @@ impl UniClipboard {
     ) -> Result<()> {
         let remote_sync = self.remote_sync.clone();
         let is_running = self.is_running.clone();
-        let last_content = self.last_content.clone();
+        let last_payload = self.last_payload.clone();
 
         tokio::spawn(async move {
             while *is_running.read().await {
                 if let Some(payload) = clipboard_receiver.recv().await {
-                    let last_content = last_content.read().await;
+                    let last_content = last_payload.read().await;
                     if let Some(last_payload) = last_content.as_ref() {
                         if last_payload.is_duplicate(&payload) {
                             info!(
@@ -96,9 +96,17 @@ impl UniClipboard {
                             continue;
                         }
                     }
+                    let tmp = last_content.clone();
+                    drop(last_content);
+
+                    {
+                        *last_payload.write().await = Some(payload.clone());
+                    }
 
                     info!("Push to remote: {}", payload);
-                    if let Err(e) = remote_sync.push(payload).await {
+                    if let Err(e) = remote_sync.push(payload.clone()).await {
+                        // 恢复到之前的值
+                        *last_payload.write().await = tmp;
                         // 处理错误，可能需要重试或记录日志
                         error!("Failed to push to remote: {:?}", e);
                     }
@@ -113,17 +121,22 @@ impl UniClipboard {
         let clipboard = self.clipboard.clone();
         let remote_sync = self.remote_sync.clone();
         let is_running = self.is_running.clone();
-        let last_content = self.last_content.clone();
+        let last_payload = self.last_payload.clone();
 
         tokio::spawn(async move {
             while *is_running.read().await {
                 match remote_sync.pull(Some(Duration::from_secs(10))).await {
                     Ok(content) => {
                         info!("Set local clipboard: {}", content);
-                        if let Err(e) = clipboard.set_clipboard_content(content.clone()).await {
+                        let tmp = last_payload.read().await.clone();
+                        {
+                            *last_payload.write().await = Some(content.clone());
+                        }
+                        if let Err(e) = clipboard.set_clipboard_content(content).await {
+                            // 恢复到之前的值
+                            *last_payload.write().await = tmp;
                             error!("Failed to set clipboard content: {:?}", e);
                         }
-                        *last_content.write().await = Some(content);
                     }
                     Err(e) => {
                         // 处理错误，可能需要重试或记录日志

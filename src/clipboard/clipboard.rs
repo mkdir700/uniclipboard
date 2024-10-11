@@ -129,7 +129,7 @@ impl RsClipboard {
             let mut encoder = Encoder::new(Cursor::new(&mut buffer), width, height);
             encoder.set_color(png::ColorType::Rgba);
             encoder.set_depth(png::BitDepth::Eight);
-            encoder.set_compression(png::Compression::Fast);
+            encoder.set_compression(png::Compression::Best);
             let mut writer = encoder
                 .write_header()
                 .map_err(|e| anyhow::anyhow!("Failed to write PNG header: {}", e))?;
@@ -144,9 +144,9 @@ impl RsClipboard {
     pub fn read(&self) -> Result<Payload> {
         if let Ok(image) = self.read_image() {
             let (width, height) = image.get_size();
-            debug!("开始转换图像");
+            debug!("开始转换图像: {}x{}", width, height);
             let png_bytes = self.parallel_convert_image(image)?;
-            debug!("图像转换完成");
+            debug!("图像转换完成: {}x{}", width, height);
 
             let size = png_bytes.len();
             let device_id = CONFIG.read().unwrap().get_device_id();
@@ -203,6 +203,7 @@ impl ClipboardContextTrait for ClipboardContextWrapper {
             .map_err(|e| anyhow::anyhow!("Failed to set text: {}", e))
     }
 
+    #[cfg(not(target_os = "windows"))]
     fn get_image(&self) -> Result<RustImageData> {
         self.0
             .get_image()
@@ -214,6 +215,15 @@ impl ClipboardContextTrait for ClipboardContextWrapper {
         self.0
             .set_image(image)
             .map_err(|e| anyhow::anyhow!("Failed to set image: {}", e))
+    }
+
+    #[cfg(target_os = "windows")]
+    fn get_image(&self) -> Result<RustImageData> {
+        use clipboard_win::{formats, get_clipboard};
+        let data = get_clipboard(formats::Bitmap)
+            .map_err(|e| anyhow::anyhow!("Failed to get image: {}", e))?;
+        RustImageData::from_bytes(&data)
+            .map_err(|e| anyhow::anyhow!("Failed to convert image: {}", e))
     }
 
     #[cfg(target_os = "windows")]

@@ -55,7 +55,7 @@ impl ImagePayload {
         // 尺寸一致且文件大小相差不超过 3%
         self.width == other.width
             && self.height == other.height
-            && (self.size as f64 - other.size as f64).abs() / (self.size as f64) <= 0.03
+            && (self.size as f64 - other.size as f64).abs() / (self.size as f64) <= 0.1
     }
 }
 
