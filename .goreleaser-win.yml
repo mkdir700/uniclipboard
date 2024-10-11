@@ -12,7 +12,7 @@ builds:
         - powershell.exe -ExecutionPolicy Bypass -File .\scripts\replace-bin.ps1
 
 archives:
-  - format: zip
+  - format: binary
 
 chocolateys:
   - name: uniclipboard
@@ -36,3 +36,4 @@ chocolateys:
 
 release:
   disable: true
+
