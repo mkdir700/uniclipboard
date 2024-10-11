@@ -12,7 +12,10 @@ builds:
         - powershell.exe -ExecutionPolicy Bypass -File .\scripts\replace-bin.ps1
 
 archives:
-  - format: binary
+  # 使用zip格式, 否则 goreleaser 会因为找不到 windows arch 而报错
+  # 实际上，并不需要这个 zip 包，只是为了满足 goreleaser 的要求
+  # download_url 会使用 binary 的 url
+  - format: zip
 
 chocolateys:
   - name: uniclipboard
@@ -30,10 +33,9 @@ chocolateys:
       {{ .ProjectName }} installer package.
       UniClipboard is a clipboard sharing tool designed to create a seamless clipboard experience across multiple devices.
     release_notes: "https://github.com/mkdir700/uniclipboard/releases/tag/v{{ .Version }}"
-    url_template: "https://github.com/mkdir700/uniclipboard/releases/download/"
+    url_template: "https://github.com/mkdir700/uniclipboard/releases/download/{{ .Tag }}/{{ .Env.ARTIFACT_NAME }}"
     api_key: "{{ .Env.CHOCOLATEY_API_KEY }}"
     skip_publish: true # 在windows上发布
 
 release:
   disable: true
-
