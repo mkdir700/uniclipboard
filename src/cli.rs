@@ -1,4 +1,9 @@
-use crate::Config;
+use crate::device::get_device_manager;
+use crate::{
+    device::Device,
+    utils::{is_valid_ip, is_valid_port},
+    Config,
+};
 use anyhow::Result;
 use clap::Parser;
 use console::{style, Emoji};
@@ -48,42 +53,70 @@ pub fn interactive_input(config: &mut Config) -> Result<()> {
 
     if sync_selection == 0 {
         // WebSocket 配置
-        config.is_server = Some(
-            Confirm::with_theme(&theme)
-                .with_prompt("是否作为服务端？")
-                .default(config.is_server.unwrap_or(true))
+
+        // 服务端配置
+        // config.webserver_addr = Some(
+        //     Input::with_theme(&theme)
+        //         .with_prompt("请输入服务端 IP")
+        //         .validate_with(|input: &String| -> Result<(), String> {
+        //             if is_valid_ip(input) {
+        //                 Ok(())
+        //             } else {
+        //                 Err("无效的 IP 地址".to_string())
+        //             }
+        //         })
+        //         .default("0.0.0.0".to_string())
+        //         .interact_text()?,
+        // );
+
+        config.webserver_port = Some(
+            Input::with_theme(&theme)
+                .with_prompt("请输入本机服务端口")
+                .default(8113)
+                .validate_with(|input: &u16| -> Result<(), String> {
+                    if is_valid_port(*input) {
+                        Ok(())
+                    } else {
+                        Err("无效的端口, 请输入 1024 到 65535 之间的数字".to_string())
+                    }
+                })
                 .interact()?,
         );
 
-        if config.is_server.unwrap() {
-            // 服务端配置
-            config.websocket_server_addr = Some(
-                Input::with_theme(&theme)
-                    .with_prompt("请输入服务端 IP")
-                    .default("0.0.0.0".to_string())
-                    .interact_text()?,
-            );
+        // 是否连接到另一台设备
+        let is_connect_to_other_device = Confirm::with_theme(&theme)
+            .with_prompt("是否连接到另一台设备？")
+            .default(config.enable_websocket.unwrap_or(true))
+            .interact()?;
+        
+        if is_connect_to_other_device {
+            // 对等设备
+            let peer_device_ip: String = Input::with_theme(&theme)
+                .with_prompt("请输入对等设备 IP")
+                .validate_with(|input: &String| -> Result<(), String> {
+                    if is_valid_ip(input) {
+                        Ok(())
+                    } else {
+                        Err("无效的 IP 地址".to_string())
+                    }
+                })
+                .interact_text()?;
 
-            config.websocket_server_port = Some(
-                Input::with_theme(&theme)
-                    .with_prompt("请输入服务端端口")
-                    .default(8113)
-                    .interact()?,
-            );
-        } else {
-            // 客户端配置
-            config.connect_websocket_server_addr = Some(
-                Input::with_theme(&theme)
-                    .with_prompt("请输入服务端 IP")
-                    .interact_text()?,
-            );
+            let peer_device_port: u16 = Input::with_theme(&theme)
+                .with_prompt("请输入对等设备端口")
+                .default(8113)
+                .validate_with(|input: &u16| -> Result<(), String> {
+                    if is_valid_port(*input) {
+                        Ok(())
+                    } else {
+                        Err("无效的端口, 请查看对等设备的端口号".to_string())
+                    }
+                })
+                .interact()?;
 
-            config.connect_websocket_server_port = Some(
-                Input::with_theme(&theme)
-                    .with_prompt("请输入服务端端口")
-                    .default(8113)
-                    .interact()?,
-            );
+            // 添加对等设备
+            config.peer_device_addr = Some(peer_device_ip);
+            config.peer_device_port = Some(peer_device_port);
         }
     } else {
         // WebDAV 配置

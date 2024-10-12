@@ -52,8 +52,8 @@ fn test_load_config() {
     assert_eq!(config.key_mouse_monitor_sleep_timeout, Some(6000));
     assert_eq!(config.enable_websocket, Some(true));
     assert_eq!(config.is_server, Some(false));
-    assert_eq!(config.websocket_server_addr, Some("127.0.0.1".to_string()));
-    assert_eq!(config.websocket_server_port, Some(8114));
+    assert_eq!(config.webserver_addr, Some("127.0.0.1".to_string()));
+    assert_eq!(config.webserver_port, Some(8114));
     assert_eq!(config.connect_websocket_server_addr, Some("example.com".to_string()));
     assert_eq!(config.connect_websocket_server_port, Some(8115));
 }
@@ -84,8 +84,8 @@ fn test_save_config() {
     config.key_mouse_monitor_sleep_timeout = Some(7000);
     config.enable_websocket = Some(false);
     config.is_server = Some(true);
-    config.websocket_server_addr = Some("192.168.1.100".to_string());
-    config.websocket_server_port = Some(8116);
+    config.webserver_addr = Some("192.168.1.100".to_string());
+    config.webserver_port = Some(8116);
     config.connect_websocket_server_addr = Some("connect.example.com".to_string());
     config.connect_websocket_server_port = Some(8117);
 
@@ -109,8 +109,8 @@ fn test_save_config() {
     assert_eq!(saved_config.key_mouse_monitor_sleep_timeout, Some(7000));
     assert_eq!(saved_config.enable_websocket, Some(false));
     assert_eq!(saved_config.is_server, Some(true));
-    assert_eq!(saved_config.websocket_server_addr, Some("192.168.1.100".to_string()));
-    assert_eq!(saved_config.websocket_server_port, Some(8116));
+    assert_eq!(saved_config.webserver_addr, Some("192.168.1.100".to_string()));
+    assert_eq!(saved_config.webserver_port, Some(8116));
     assert_eq!(saved_config.connect_websocket_server_addr, Some("connect.example.com".to_string()));
     assert_eq!(saved_config.connect_websocket_server_port, Some(8117));
 }

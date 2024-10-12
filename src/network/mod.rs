@@ -3,4 +3,4 @@ pub mod websocket;
 
 
 pub use webdav::WebDAVClient;
-pub use websocket::{WebSocketServer, WebSocketClient};
+pub use websocket::WebSocketClient;
