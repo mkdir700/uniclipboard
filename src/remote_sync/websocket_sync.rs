@@ -1,8 +1,8 @@
 use super::traits::RemoteClipboardSync;
+use crate::config::CONFIG;
 use crate::device::{get_device_manager, Device};
 use crate::message::WebSocketMessage;
 use crate::web::WebSocketHandler;
-use crate::config::CONFIG;
 use crate::{message::ClipboardSyncMessage, network::WebSocketClient};
 use anyhow::Result;
 use async_trait::async_trait;
@@ -60,13 +60,26 @@ impl WebSocketSync {
         client.sync_device_list().await?;
 
         let mut connected_devices = self.connected_devices.write().await;
-        connected_devices.insert(format!("{}:{}", device.ip.as_ref().unwrap(), device.port.as_ref().unwrap()), client);
+        connected_devices.insert(
+            format!(
+                "{}:{}",
+                device.ip.as_ref().unwrap(),
+                device.port.as_ref().unwrap()
+            ),
+            client,
+        );
         Ok(())
     }
 
     /// 连接对等设备
-    async fn connect_peer_device(&self, peer_device_addr: &str, peer_device_port: u16) -> Result<()> {
-        let uri = format!("ws://{}:{}/ws", peer_device_addr, peer_device_port).parse::<Uri>().unwrap();
+    async fn connect_peer_device(
+        &self,
+        peer_device_addr: &str,
+        peer_device_port: u16,
+    ) -> Result<()> {
+        let uri = format!("ws://{}:{}/ws", peer_device_addr, peer_device_port)
+            .parse::<Uri>()
+            .unwrap();
         let mut client = WebSocketClient::new(uri);
         client.connect().await?;
         client.register().await?;
@@ -141,11 +154,25 @@ impl RemoteClipboardSync for WebSocketSync {
                 peer_device_addr = config.peer_device_addr.clone();
                 peer_device_port = config.peer_device_port;
             }
-            if let (Some(peer_device_addr), Some(peer_device_port)) = (peer_device_addr, peer_device_port) {
-                info!("Start to connect to peer device: {}:{}", peer_device_addr, peer_device_port);
-                match self.connect_peer_device(&peer_device_addr, peer_device_port).await {
-                    Ok(_) => info!("Connected to peer device: {}:{}", peer_device_addr, peer_device_port),
-                    Err(e) => error!("Failed to connect to peer device: {}:{}, error: {}", peer_device_addr, peer_device_port, e),
+            if let (Some(peer_device_addr), Some(peer_device_port)) =
+                (peer_device_addr, peer_device_port)
+            {
+                info!(
+                    "Start to connect to peer device: {}:{}",
+                    peer_device_addr, peer_device_port
+                );
+                match self
+                    .connect_peer_device(&peer_device_addr, peer_device_port)
+                    .await
+                {
+                    Ok(_) => info!(
+                        "Connected to peer device: {}:{}",
+                        peer_device_addr, peer_device_port
+                    ),
+                    Err(e) => error!(
+                        "Failed to connect to peer device: {}:{}, error: {}",
+                        peer_device_addr, peer_device_port, e
+                    ),
                 }
             } else {
                 info!("No peer device found, skip connecting to peer device");

@@ -6,9 +6,11 @@ use crate::message::WebSocketMessage;
 use anyhow::Result;
 use futures::StreamExt;
 use futures_util::SinkExt;
+use log::error;
 use std::sync::Arc;
 use tokio::net::TcpStream;
 use tokio::sync::Mutex;
+use tokio::time::{interval, Duration};
 use tokio_tungstenite::connect_async;
 use tokio_tungstenite::tungstenite::http::Uri;
 use tokio_tungstenite::tungstenite::Message;
@@ -43,9 +45,26 @@ impl WebSocketClient {
         }
     }
 
-    pub async fn send_clipboard_sync(&self, message: &WebSocketMessage) -> Result<()> {
-        let message_str = serde_json::to_string(message)?;
-        self.send_raw(Message::Text(message_str)).await
+    /// 发送剪贴板同步消息
+    /// 如果发送失败, 则尝试重新连接, 并重试3次
+    pub async fn send_clipboard_sync(&mut self, message: &WebSocketMessage) -> Result<()> {
+        let mut retries = 0;
+        while retries < 3 {
+            let message_str = serde_json::to_string(message)?;
+            if let Err(e) = self.send_raw(Message::Text(message_str)).await {
+                retries += 1;
+                error!("Failed to send message, retrying... {}", e);
+                // 捕获 IO error: Broken pipe(os error 32)
+                if e.to_string().contains("Broken pipe") {
+                    self.reconnect().await?;
+                } else {
+                    return Err(e);
+                }
+            } else {
+                return Ok(());
+            }
+        }
+        Err(anyhow::anyhow!("Failed to send message after 3 retries"))
     }
 
     pub async fn send_raw(&self, message: Message) -> Result<()> {
@@ -74,6 +93,12 @@ impl WebSocketClient {
             Some(Err(e)) => Err(anyhow::anyhow!("WebSocket error: {}", e)),
             None => Err(anyhow::anyhow!("WebSocket error: Connection closed")),
         }
+    }
+
+    /// 重新连接到服务器
+    pub async fn reconnect(&mut self) -> Result<()> {
+        self.disconnect().await?;
+        self.connect().await
     }
 
     /// 连接到服务器
@@ -160,6 +185,30 @@ impl WebSocketClient {
         let text = serde_json::to_string(&web_socket_message)?;
         self.send_raw(Message::Text(text)).await?;
         Ok(())
+    }
+
+    pub async fn start_ping_task(&self, interval_secs: u64) {
+        let mut ping_interval = interval(Duration::from_secs(interval_secs));
+        let writer = self.writer.clone();
+
+        tokio::spawn(async move {
+            loop {
+                tokio::select! {
+                    _ = ping_interval.tick() => {
+                        if let Some(writer) = writer.as_ref() {
+                            let mut writer = writer.lock().await;
+                            if let Err(e) = writer.send(Message::Ping(vec![])).await {
+                                error!("发送 ping 失败: {}", e);
+                                break;
+                            }
+                        } else {
+                            error!("WebSocket 写入器不可用");
+                            break;
+                        }
+                    }
+                }
+            }
+        });
     }
 }
 

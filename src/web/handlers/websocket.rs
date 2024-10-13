@@ -86,35 +86,46 @@ impl WebSocketHandler {
     }
 
     async fn handle_message(&self, client_id: String, msg: Message, addr: Option<SocketAddr>) {
-        if let Ok(text) = msg.to_str() {
-            if text == "connect" {
-                return;
-            }
-            match serde_json::from_str::<WebSocketMessage>(text) {
-                Ok(websocket_message) => match websocket_message {
-                    WebSocketMessage::ClipboardSync(data) => {
-                        self.handle_clipboard_sync(client_id, data).await;
-                    }
-                    WebSocketMessage::DeviceListSync(data) => {
-                        self.handle_device_list_sync(client_id, data).await;
-                    }
-                    WebSocketMessage::Register(mut device) => {
-                        match addr {
-                            Some(addr) => {
-                                device.ip = Some(addr.ip().to_string());
-                                device.port = Some(addr.port());
-                            }
-                            None => (),
-                        }
-                        self.handle_register(client_id, device).await;
-                    }
-                    WebSocketMessage::Unregister(device_id) => {
-                        self.handle_unregister(client_id, device_id).await;
-                    }
-                },
-                Err(e) => {
-                    error!("Error parsing WebSocket message: {:?}, message: {}", e, text);
+        if msg.is_text() {
+            if let Ok(text) = msg.to_str() {
+                if text == "connect" {
+                    return;
                 }
+                match serde_json::from_str::<WebSocketMessage>(text) {
+                    Ok(websocket_message) => match websocket_message {
+                        WebSocketMessage::ClipboardSync(data) => {
+                            self.handle_clipboard_sync(client_id, data).await;
+                        }
+                        WebSocketMessage::DeviceListSync(data) => {
+                            self.handle_device_list_sync(client_id, data).await;
+                        }
+                        WebSocketMessage::Register(mut device) => {
+                            match addr {
+                                Some(addr) => {
+                                    device.ip = Some(addr.ip().to_string());
+                                    device.port = Some(addr.port());
+                                }
+                                None => (),
+                            }
+                            self.handle_register(client_id, device).await;
+                        }
+                        WebSocketMessage::Unregister(device_id) => {
+                            self.handle_unregister(client_id, device_id).await;
+                        }
+                    },
+                    Err(e) => {
+                        error!(
+                            "Error parsing WebSocket message: {:?}, message: {}",
+                            e, text
+                        );
+                    }
+                }
+            }
+        } else if msg.is_ping() {
+            // 返回 pong
+            let sender = self.sessions.read().await.get(&client_id).cloned();
+            if let Some(sender) = sender {
+                let _ = sender.send(Ok(Message::pong(vec![])));
             }
         }
     }
@@ -172,11 +183,7 @@ impl WebSocketHandler {
             .await;
     }
 
-    async fn handle_register(
-        &self,
-        client_id: String,
-        device: Device,
-    ) {
+    async fn handle_register(&self, client_id: String, device: Device) {
         info!("Received register from {}: {}", client_id, device);
         let device_manager = get_device_manager();
         {
@@ -216,7 +223,6 @@ impl WebSocketHandler {
     ) -> Result<()> {
         self.broadcast(message, Some(vec![sender_id])).await
     }
-
 
     /// 向所有已连接到本机的设备广播消息
     pub async fn broadcast(
