@@ -54,16 +54,8 @@ impl WebSocketHandler {
             return;
         }
 
-        let mut is_reconnet = false;
-
         {
             let mut sessions = self.sessions.write().await;
-            // 如果是之前存在的 client_id, 则可能是因为意外掉线重连了
-            if sessions.contains_key(&client_id) {
-                info!("Client {} reconnected", client_id);
-                is_reconnet = true;
-            }
-
             sessions.insert(client_id.clone(), client_sender);
             info!(
                 "Client {} connected, current clients: {}",
@@ -88,7 +80,7 @@ impl WebSocketHandler {
                     break;
                 }
             };
-            self.handle_message(client_id.clone(), msg, addr, is_reconnet)
+            self.handle_message(client_id.clone(), msg, addr)
                 .await;
         }
         info!("Client {} disconnected", client_id);
@@ -104,7 +96,6 @@ impl WebSocketHandler {
         client_id: String,
         msg: Message,
         addr: Option<SocketAddr>,
-        is_reconnet: bool,
     ) {
         if msg.is_text() {
             if let Ok(text) = msg.to_str() {
@@ -126,12 +117,6 @@ impl WebSocketHandler {
                                     device.port = Some(addr.port());
                                 }
                                 None => (),
-                            }
-
-                            // 如果是重连，则重新让当前设备向该设备发起连接
-                            if is_reconnet {
-                                let device = device.clone();
-                                let _ = self.new_connect_sender.lock().await.send(device).await;
                             }
                             self.handle_register(client_id, device).await;
                         }
@@ -219,15 +204,6 @@ impl WebSocketHandler {
             } else {
                 error!("Failed to lock device manager");
             }
-        }
-        // 如果是 peer 设备，则不新建链接
-        let peer_device_addr;
-        {
-            let config = CONFIG.read().unwrap();
-            peer_device_addr = config.peer_device_addr.clone();
-        }
-        if device.ip == peer_device_addr || device.ip == Some("127.0.0.1".to_string()) {
-            return;
         }
         let _ = self.new_connect_sender.lock().await.send(device).await;
     }

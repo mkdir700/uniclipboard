@@ -17,6 +17,7 @@ use tokio_tungstenite::tungstenite::http::Uri;
 pub struct WebSocketSync {
     server: Arc<WebSocketHandler>,
     connected_devices: Arc<RwLock<HashMap<String, WebSocketClient>>>,
+    peer_device_connected: Arc<RwLock<bool>>,
 }
 
 impl WebSocketSync {
@@ -24,6 +25,7 @@ impl WebSocketSync {
         Self {
             server,
             connected_devices: Arc::new(RwLock::new(HashMap::new())),
+            peer_device_connected: Arc::new(RwLock::new(false)),
         }
     }
 
@@ -32,11 +34,25 @@ impl WebSocketSync {
         let server = self.server.clone();
         let self_clone = Arc::new(self.clone());
         let connected_devices = self.connected_devices.clone();
+        let peer_device_connected = self.peer_device_connected.clone();
 
         tokio::spawn(async move {
             while let Ok(Some(device)) = server.subscribe_device_online().await {
-                // 如果该设备 id 是存在与 connected_devices 中，则进行重连
-                if connected_devices.read().await.contains_key(&device.id) {
+                // 如果是对等设备连接需要判断连接状态是否为 false
+                let peer_device_disconnnected: bool = {
+                    let connected = peer_device_connected.read().await;
+                    !*connected
+                };
+
+                if peer_device_disconnnected {
+                    // 如果该设备 id 是存在与 connected_devices 中，则进行重连
+                    info!("Peer device disconnected, try reconnect...");
+                    if let Err(e) = self_clone.connect_device(&device).await {
+                        error!("Failed to reconnect to device: {}, error: {}", device, e);
+                    }
+                    info!("Reconnected to device: {}", device);
+                } else if connected_devices.read().await.contains_key(&device.id) {
+                    // 如果该设备 id 是存在与 connected_devices 中，则进行重连
                     info!("Device {} is exist, try reconnect...", device);
                     if let Err(e) = self_clone.connect_device(&device).await {
                         error!("Failed to reconnect to device: {}, error: {}", device, e);
@@ -95,6 +111,7 @@ impl WebSocketSync {
         client.register().await?;
         let mut connected_devices = self.connected_devices.write().await;
         connected_devices.insert(format!("{}:{}", peer_device_addr, peer_device_port), client);
+        *self.peer_device_connected.write().await = true;
         Ok(())
     }
 }
