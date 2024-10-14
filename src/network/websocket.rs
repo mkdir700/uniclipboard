@@ -7,6 +7,8 @@ use anyhow::Result;
 use futures::StreamExt;
 use futures_util::SinkExt;
 use log::error;
+use log::info;
+use log::warn;
 use std::sync::Arc;
 use tokio::net::TcpStream;
 use tokio::sync::Mutex;
@@ -55,8 +57,11 @@ impl WebSocketClient {
                 retries += 1;
                 error!("Failed to send message, retrying... {}", e);
                 // 捕获 IO error: Broken pipe(os error 32)
-                if e.to_string().contains("Broken pipe") {
+                if e.to_string().to_lowercase().contains("io error") {
+                    info!("WebSocket connection broken, reconnecting...");
                     self.reconnect().await?;
+                    info!("Reconnected to server");
+                    continue;
                 } else {
                     return Err(e);
                 }
@@ -130,7 +135,10 @@ impl WebSocketClient {
     pub async fn disconnect(&mut self) -> Result<()> {
         if let Some(writer) = self.writer.as_ref() {
             let mut writer_guard = writer.lock().await;
-            writer_guard.close().await?;
+            match writer_guard.close().await {
+                Ok(_) => (),
+                Err(e) => warn!("Failed to close WebSocket writer: {}", e),
+            }
             // 在这里显式地释放 writer_guard
             drop(writer_guard);
         } else {

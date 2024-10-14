@@ -27,18 +27,28 @@ impl WebSocketSync {
         }
     }
 
-    /// 监听新设备并建立连接
-    async fn listen_new_device(&self) -> Result<()> {
+    /// 监听设备上线
+    async fn listen_device_online(&self) -> Result<()> {
         let server = self.server.clone();
         let self_clone = Arc::new(self.clone());
+        let connected_devices = self.connected_devices.clone();
 
         tokio::spawn(async move {
-            while let Ok(Some(device)) = server.subscribe_new_device().await {
-                info!("A new device connected: {}, try to connect...", device);
-                if let Err(e) = self_clone.connect_device(&device).await {
-                    error!("Failed to connect to device: {}, error: {}", device, e);
+            while let Ok(Some(device)) = server.subscribe_device_online().await {
+                // 如果该设备 id 是存在与 connected_devices 中，则进行重连
+                if connected_devices.read().await.contains_key(&device.id) {
+                    info!("Device {} is exist, try reconnect...", device);
+                    if let Err(e) = self_clone.connect_device(&device).await {
+                        error!("Failed to reconnect to device: {}, error: {}", device, e);
+                    }
+                    info!("Reconnected to device: {}", device);
+                } else {
+                    info!("A device connected: {}, try to connect...", device);
+                    if let Err(e) = self_clone.connect_device(&device).await {
+                        error!("Failed to connect to device: {}, error: {}", device, e);
+                    }
+                    info!("Connected to device: {}", device);
                 }
-                info!("Connected to device: {}", device);
             }
         });
         Ok(())
@@ -186,7 +196,7 @@ impl RemoteClipboardSync for WebSocketSync {
         }
 
         // 监听新设备
-        self.listen_new_device().await?;
+        self.listen_device_online().await?;
         Ok(())
     }
 

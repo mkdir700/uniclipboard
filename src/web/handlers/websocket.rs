@@ -54,10 +54,23 @@ impl WebSocketHandler {
             return;
         }
 
-        self.sessions
-            .write()
-            .await
-            .insert(client_id.clone(), client_sender);
+        let mut is_reconnet = false;
+
+        {
+            let mut sessions = self.sessions.write().await;
+            // 如果是之前存在的 client_id, 则可能是因为意外掉线重连了
+            if sessions.contains_key(&client_id) {
+                info!("Client {} reconnected", client_id);
+                is_reconnet = true;
+            }
+
+            sessions.insert(client_id.clone(), client_sender);
+            info!(
+                "Client {} connected, current clients: {}",
+                client_id,
+                sessions.len()
+            );
+        }
 
         tokio::task::spawn(client_rcv.forward(server_ws_sender).map(|result| {
             if let Err(e) = result {
@@ -75,7 +88,8 @@ impl WebSocketHandler {
                     break;
                 }
             };
-            self.handle_message(client_id.clone(), msg, addr).await;
+            self.handle_message(client_id.clone(), msg, addr, is_reconnet)
+                .await;
         }
         info!("Client {} disconnected", client_id);
         self.client_disconnected(client_id).await;
@@ -85,7 +99,13 @@ impl WebSocketHandler {
         self.sessions.write().await.remove(&client_id);
     }
 
-    async fn handle_message(&self, client_id: String, msg: Message, addr: Option<SocketAddr>) {
+    async fn handle_message(
+        &self,
+        client_id: String,
+        msg: Message,
+        addr: Option<SocketAddr>,
+        is_reconnet: bool,
+    ) {
         if msg.is_text() {
             if let Ok(text) = msg.to_str() {
                 if text == "connect" {
@@ -106,6 +126,12 @@ impl WebSocketHandler {
                                     device.port = Some(addr.port());
                                 }
                                 None => (),
+                            }
+
+                            // 如果是重连，则重新让当前设备向该设备发起连接
+                            if is_reconnet {
+                                let device = device.clone();
+                                let _ = self.new_connect_sender.lock().await.send(device).await;
                             }
                             self.handle_register(client_id, device).await;
                         }
@@ -283,8 +309,8 @@ impl WebSocketHandler {
         }
     }
 
-    /// 用于外部订阅，接收新增的设备
-    pub async fn subscribe_new_device(&self) -> Result<Option<Device>> {
+    /// 用于外部订阅，接收设备上线
+    pub async fn subscribe_device_online(&self) -> Result<Option<Device>> {
         let reader = self.new_connect_receiver.clone();
         loop {
             let data = reader.lock().await.recv().await;
