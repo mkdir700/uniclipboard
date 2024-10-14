@@ -64,11 +64,16 @@ impl WebSocketSync {
                     let connected = peer_device_connected.read().await;
                     connected.is_none() || !connected.unwrap()
                 };
-
-                if peer_device_disconnnected {
-                    info!("Peer device disconnected, try reconnect...");
-                    let peer_device_addr = peer_device_addr.clone().unwrap();
+                // 与对等设备建立连接时，没有把对等设备加入到 connected_devices 中
+                let peer_device_addr = peer_device_addr.clone().unwrap_or("".to_string());
+                // 如果当前设备的 IP 与对等设备IP 相同且对等设备已经处于连接状态则不做连接操作，否则将导致死循环
+                if peer_device_addr == device.ip.clone().unwrap() && !peer_device_disconnnected {
+                    info!("Peer device already connected: {}, skip...", device);
+                    continue;
+                } else if peer_device_disconnnected {
                     let peer_device_port = peer_device_port.clone().unwrap();
+
+                    info!("Peer device disconnected, try reconnect...");
 
                     match self_clone.connect_peer_device().await {
                         Ok(_) => info!(
@@ -162,6 +167,11 @@ impl WebSocketSync {
         let mut connected_devices = self.connected_devices.write().await;
         connected_devices.insert(format!("{}:{}", peer_device_addr, peer_device_port), client);
         Ok(())
+    }
+
+    // 是否已经连接
+    async fn is_connected(&self) -> bool {
+        self.peer_device_connected.read().await.is_some()
     }
 }
 
