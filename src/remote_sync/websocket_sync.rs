@@ -168,11 +168,6 @@ impl WebSocketSync {
         connected_devices.insert(format!("{}:{}", peer_device_addr, peer_device_port), client);
         Ok(())
     }
-
-    // 是否已经连接
-    async fn is_connected(&self) -> bool {
-        self.peer_device_connected.read().await.is_some()
-    }
 }
 
 #[async_trait]
