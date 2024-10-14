@@ -23,20 +23,25 @@ pub struct WebSocketHandler {
     sessions: Sessions,
     clipboard_message_sync_sender: Arc<Mutex<mpsc::Sender<ClipboardSyncMessage>>>,
     clipboard_message_sync_receiver: Arc<Mutex<mpsc::Receiver<ClipboardSyncMessage>>>,
-    new_connect_sender: Arc<Mutex<mpsc::Sender<Device>>>,
-    new_connect_receiver: Arc<Mutex<mpsc::Receiver<Device>>>,
+    device_online_sender: Arc<Mutex<mpsc::Sender<Device>>>,
+    device_online_receiver: Arc<Mutex<mpsc::Receiver<Device>>>,
+    device_offline_sender: Arc<Mutex<mpsc::Sender<Device>>>,
+    device_offline_receiver: Arc<Mutex<mpsc::Receiver<Device>>>,
 }
 
 impl WebSocketHandler {
     pub fn new() -> Self {
         let (tx, rx) = mpsc::channel(100);
-        let (new_device_tx, new_device_rx) = mpsc::channel(100);
+        let (device_online_tx, device_online_rx) = mpsc::channel(100);
+        let (device_offline_tx, device_offline_rx) = mpsc::channel(100);
         Self {
             sessions: Sessions::default(),
             clipboard_message_sync_sender: Arc::new(Mutex::new(tx)),
             clipboard_message_sync_receiver: Arc::new(Mutex::new(rx)),
-            new_connect_sender: Arc::new(Mutex::new(new_device_tx)),
-            new_connect_receiver: Arc::new(Mutex::new(new_device_rx)),
+            device_online_sender: Arc::new(Mutex::new(device_online_tx)),
+            device_online_receiver: Arc::new(Mutex::new(device_online_rx)),
+            device_offline_sender: Arc::new(Mutex::new(device_offline_tx)),
+            device_offline_receiver: Arc::new(Mutex::new(device_offline_rx)),
         }
     }
 
@@ -89,6 +94,14 @@ impl WebSocketHandler {
 
     async fn client_disconnected(&self, client_id: String) {
         self.sessions.write().await.remove(&client_id);
+        let device_manager = get_device_manager();
+        let device = {
+            let device_manager = device_manager.lock();
+            device_manager.unwrap().get(&client_id).cloned()
+        };
+        if let Some(device) = device {
+            let _ = self.device_offline_sender.lock().await.send(device).await;
+        }
     }
 
     async fn handle_message(
@@ -185,7 +198,7 @@ impl WebSocketHandler {
             if device.id == device_id {
                 continue;
             }
-            let _ = self.new_connect_sender.lock().await.send(device).await;
+            let _ = self.device_online_sender.lock().await.send(device).await;
         }
 
         // 广播给还没收到这个设备列表的设备
@@ -205,7 +218,7 @@ impl WebSocketHandler {
                 error!("Failed to lock device manager");
             }
         }
-        let _ = self.new_connect_sender.lock().await.send(device).await;
+        let _ = self.device_online_sender.lock().await.send(device).await;
     }
 
     async fn handle_unregister(&self, client_id: String, device_id: String) {
@@ -287,7 +300,18 @@ impl WebSocketHandler {
 
     /// 用于外部订阅，接收设备上线
     pub async fn subscribe_device_online(&self) -> Result<Option<Device>> {
-        let reader = self.new_connect_receiver.clone();
+        let reader = self.device_online_receiver.clone();
+        loop {
+            let data = reader.lock().await.recv().await;
+            if let Some(data) = data {
+                return Ok(Some(data));
+            }
+        }
+    }
+
+    /// 用于外部订阅，接收设备下线
+    pub async fn subscribe_device_offline(&self) -> Result<Option<Device>> {
+        let reader = self.device_offline_receiver.clone();
         loop {
             let data = reader.lock().await.recv().await;
             if let Some(data) = data {

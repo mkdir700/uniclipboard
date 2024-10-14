@@ -17,15 +17,34 @@ use tokio_tungstenite::tungstenite::http::Uri;
 pub struct WebSocketSync {
     server: Arc<WebSocketHandler>,
     connected_devices: Arc<RwLock<HashMap<String, WebSocketClient>>>,
-    peer_device_connected: Arc<RwLock<bool>>,
+    peer_device_addr: Option<String>,
+    peer_device_port: Option<u16>,
+    peer_device_connected: Arc<RwLock<Option<bool>>>,
 }
 
 impl WebSocketSync {
     pub fn new(server: Arc<WebSocketHandler>) -> Self {
+        let peer_device_addr;
+        let peer_device_port;
+        {
+            let config = CONFIG.read().unwrap();
+            peer_device_addr = config.peer_device_addr.clone();
+            peer_device_port = config.peer_device_port.clone();
+        }
+        let peer_device_connected = {
+            if peer_device_addr.is_some() && peer_device_port.is_some() {
+                Some(false)
+            } else {
+                None
+            }
+        };
+
         Self {
             server,
             connected_devices: Arc::new(RwLock::new(HashMap::new())),
-            peer_device_connected: Arc::new(RwLock::new(false)),
+            peer_device_addr: peer_device_addr.clone(),
+            peer_device_port: peer_device_port.clone(),
+            peer_device_connected: Arc::new(RwLock::new(peer_device_connected)),
         }
     }
 
@@ -34,6 +53,8 @@ impl WebSocketSync {
         let server = self.server.clone();
         let self_clone = Arc::new(self.clone());
         let connected_devices = self.connected_devices.clone();
+        let peer_device_addr = self.peer_device_addr.clone();
+        let peer_device_port = self.peer_device_port.clone();
         let peer_device_connected = self.peer_device_connected.clone();
 
         tokio::spawn(async move {
@@ -41,16 +62,24 @@ impl WebSocketSync {
                 // 如果是对等设备连接需要判断连接状态是否为 false
                 let peer_device_disconnnected: bool = {
                     let connected = peer_device_connected.read().await;
-                    !*connected
+                    connected.is_none() || !connected.unwrap()
                 };
 
                 if peer_device_disconnnected {
-                    // 如果该设备 id 是存在与 connected_devices 中，则进行重连
                     info!("Peer device disconnected, try reconnect...");
-                    if let Err(e) = self_clone.connect_device(&device).await {
-                        error!("Failed to reconnect to device: {}, error: {}", device, e);
-                    }
-                    info!("Reconnected to device: {}", device);
+                    let peer_device_addr = peer_device_addr.clone().unwrap();
+                    let peer_device_port = peer_device_port.clone().unwrap();
+
+                    match self_clone.connect_peer_device().await {
+                        Ok(_) => info!(
+                            "Reconnected to peer device: {}:{}",
+                            peer_device_addr, peer_device_port
+                        ),
+                        Err(e) => error!(
+                            "Failed to connect to peer device: {}:{}, error: {}",
+                            peer_device_addr, peer_device_port, e
+                        ),
+                    };
                 } else if connected_devices.read().await.contains_key(&device.id) {
                     // 如果该设备 id 是存在与 connected_devices 中，则进行重连
                     info!("Device {} is exist, try reconnect...", device);
@@ -65,6 +94,23 @@ impl WebSocketSync {
                     }
                     info!("Connected to device: {}", device);
                 }
+            }
+        });
+        Ok(())
+    }
+
+    /// 监听设备下线
+    async fn listen_device_offline(&self) -> Result<()> {
+        let server = self.server.clone();
+        let connected_devices = self.connected_devices.clone();
+        let peer_device_connected = self.peer_device_connected.clone();
+
+        tokio::spawn(async move {
+            while let Ok(Some(device)) = server.subscribe_device_offline().await {
+                info!("A device offline: {}", device);
+                let mut connected_devices = connected_devices.write().await;
+                connected_devices.remove(&device.id);
+                *peer_device_connected.write().await = Some(false);
             }
         });
         Ok(())
@@ -98,20 +144,23 @@ impl WebSocketSync {
     }
 
     /// 连接对等设备
-    async fn connect_peer_device(
-        &self,
-        peer_device_addr: &str,
-        peer_device_port: u16,
-    ) -> Result<()> {
+    async fn connect_peer_device(&self) -> Result<()> {
+        if self.peer_device_addr.is_none() || self.peer_device_port.is_none() {
+            return Err(anyhow::anyhow!("Peer device address or port is not set"));
+        }
+
+        let peer_device_addr = self.peer_device_addr.clone().unwrap();
+        let peer_device_port = self.peer_device_port.clone().unwrap();
+
         let uri = format!("ws://{}:{}/ws", peer_device_addr, peer_device_port)
             .parse::<Uri>()
             .unwrap();
         let mut client = WebSocketClient::new(uri);
         client.connect().await?;
+        *self.peer_device_connected.write().await = Some(true);
         client.register().await?;
         let mut connected_devices = self.connected_devices.write().await;
         connected_devices.insert(format!("{}:{}", peer_device_addr, peer_device_port), client);
-        *self.peer_device_connected.write().await = true;
         Ok(())
     }
 }
@@ -173,36 +222,22 @@ impl RemoteClipboardSync for WebSocketSync {
             .collect::<Vec<_>>();
 
         // 如果 devices 为空，则尝试从配置中获取对等设备
-        if devices.is_empty() {
-            let peer_device_addr;
-            let peer_device_port;
-            {
-                let config = CONFIG.read().unwrap();
-                peer_device_addr = config.peer_device_addr.clone();
-                peer_device_port = config.peer_device_port;
-            }
-            if let (Some(peer_device_addr), Some(peer_device_port)) =
-                (peer_device_addr, peer_device_port)
-            {
-                info!(
-                    "Start to connect to peer device: {}:{}",
+        if devices.is_empty() && self.peer_device_connected.read().await.is_some() {
+            let peer_device_addr = self.peer_device_addr.clone().unwrap();
+            let peer_device_port = self.peer_device_port.clone().unwrap();
+            info!(
+                "Start to connect to peer device: {}:{}",
+                peer_device_addr, peer_device_port
+            );
+            match self.connect_peer_device().await {
+                Ok(_) => info!(
+                    "Connected to peer device: {}:{}",
                     peer_device_addr, peer_device_port
-                );
-                match self
-                    .connect_peer_device(&peer_device_addr, peer_device_port)
-                    .await
-                {
-                    Ok(_) => info!(
-                        "Connected to peer device: {}:{}",
-                        peer_device_addr, peer_device_port
-                    ),
-                    Err(e) => error!(
-                        "Failed to connect to peer device: {}:{}, error: {}",
-                        peer_device_addr, peer_device_port, e
-                    ),
-                }
-            } else {
-                info!("No peer device found, skip connecting to peer device");
+                ),
+                Err(e) => error!(
+                    "Failed to connect to peer device: {}:{}, error: {}",
+                    peer_device_addr, peer_device_port, e
+                ),
             }
         } else {
             info!("Start to connect to {} devices", devices.len());
@@ -212,8 +247,9 @@ impl RemoteClipboardSync for WebSocketSync {
             info!("All devices connected");
         }
 
-        // 监听新设备
+        // 监听设备上下线
         self.listen_device_online().await?;
+        self.listen_device_offline().await?;
         Ok(())
     }
 
