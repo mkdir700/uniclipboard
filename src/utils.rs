@@ -19,11 +19,7 @@ pub fn is_valid_ip(ip: &str) -> bool {
         return false;
     }
     for part in parts {
-        if let Ok(num) = part.parse::<u8>() {
-            if num > 255 {
-                return false;
-            }
-        } else {
+        if part.parse::<u8>().is_err() {
             return false;
         }
     }
@@ -32,7 +28,7 @@ pub fn is_valid_ip(ip: &str) -> bool {
 
 /// 检查端口是否有效
 pub fn is_valid_port(port: u16) -> bool {
-    port >= 1024 && port <= 65535
+    port >= 1024
 }
 
 #[cfg(test)]
@@ -54,7 +50,22 @@ mod tests {
 
     #[test]
     fn test_is_valid_ip() {
-        assert_eq!(is_valid_ip("192.168.1.1"), true);
-        assert_eq!(is_valid_ip("256.256.256.256"), false);
+        assert!(is_valid_ip("192.168.1.1"));
+        assert!(is_valid_ip("0.0.0.0"));
+        assert!(is_valid_ip("255.255.255.255"));
+        assert!(!is_valid_ip("256.256.256.256"));
+        assert!(!is_valid_ip("192.168.1"));
+        assert!(!is_valid_ip("192.168.1.1.1"));
+        assert!(!is_valid_ip("192.168.1.a"));
+        assert!(!is_valid_ip("..."));
+    }
+
+    #[test]
+    fn test_is_valid_port() {
+        assert!(!is_valid_port(0));
+        assert!(!is_valid_port(1023));
+        assert!(is_valid_port(1024));
+        assert!(is_valid_port(8080));
+        assert!(is_valid_port(65535));
     }
 }
