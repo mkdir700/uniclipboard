@@ -1,6 +1,4 @@
-use crate::device::get_device_manager;
 use crate::{
-    device::Device,
     utils::{is_valid_ip, is_valid_port},
     Config,
 };

@@ -8,14 +8,14 @@ use twox_hash::xxh3::hash64;
 
 use crate::device::Device;
 
-pub enum FileType {
-    Text,
-    RichText,
-    Image,
-    ImageFile,
-    File,
-    Folder,
-}
+// pub enum FileType {
+//     Text,
+//     RichText,
+//     Image,
+//     ImageFile,
+//     File,
+//     Folder,
+// }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub enum Payload {
