@@ -77,7 +77,6 @@ impl WebSocketHandler {
 
         info!("Client {} connected", client_id);
         while let Some(result) = client_ws_rcv.next().await {
-            debug!("Received message from {}", client_id);
             let msg = match result {
                 Ok(msg) => msg,
                 Err(e) => {
@@ -155,7 +154,7 @@ impl WebSocketHandler {
     }
 
     async fn handle_clipboard_sync(&self, client_id: String, data: ClipboardSyncMessage) {
-        info!("Received clipboard sync from {}: {}", client_id, data);
+        info!("[ClipboardSync] {}: {}", client_id, data);
         {
             let tx = self.clipboard_message_sync_sender.lock().await;
             match tx.send(data.clone()).await {
@@ -171,7 +170,7 @@ impl WebSocketHandler {
 
     /// 处理设备列表同步
     async fn handle_device_list_sync(&self, client_id: String, mut data: DeviceListData) {
-        info!("Received device list from {}: {:?}", client_id, data);
+        info!("[DeviceListSync] {}: {:?}", client_id, data);
         // 合并设备列表并返回新增的设备
         let new_devices = {
             let device_manager = get_device_manager();
@@ -208,7 +207,7 @@ impl WebSocketHandler {
     }
 
     async fn handle_register(&self, client_id: String, device: Device) {
-        info!("Received register from {}: {}", client_id, device);
+        info!("[Register] {}: {}", client_id, device);
         let device_manager = get_device_manager();
         {
             let mutex = device_manager.lock();
@@ -222,7 +221,7 @@ impl WebSocketHandler {
     }
 
     async fn handle_unregister(&self, client_id: String, device_id: String) {
-        info!("Received unregister from {}: {}", client_id, device_id);
+        info!("[Unregister] {}: {}", client_id, device_id);
         let device_manager = get_device_manager();
         device_manager
             .lock()
