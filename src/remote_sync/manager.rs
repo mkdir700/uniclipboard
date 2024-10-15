@@ -94,6 +94,7 @@ impl RemoteSyncManagerTrait for RemoteSyncManager {
 #[cfg(test)]
 mod tests {
     use crate::remote_sync::traits::MockRemoteClipboardSync;
+    use crate::message::{ClipboardSyncMessage, Payload};
 
     use super::*;
     use chrono::Utc;
@@ -109,47 +110,51 @@ mod tests {
         assert!(manager.sync_handler.read().await.is_some());
     }
 
-    // #[tokio::test]
-    // async fn test_push() {
-    //     let manager = RemoteSyncManager::new();
-    //     let mut mock_handler = MockRemoteClipboardSync::new();
-    //     let payload = Payload::new_text(
-    //         Bytes::from("test_data".to_string()),
-    //         "text/plain".to_string(),
-    //         Utc::now(),
-    //     );
-    //     let message = ClipboardSyncMessage::from_payload(payload);
-    //     mock_handler
-    //         .expect_push()
-    //         .with(eq(message.clone()))
-    //         .times(1)
-    //         .returning(|_| Ok(()));
+    #[tokio::test]
+    async fn test_push() {
+        let manager = RemoteSyncManager::new();
+        let mut mock_handler = MockRemoteClipboardSync::new();
+        let payload = Payload::new_text(
+            Bytes::from("test_data".to_string()),
+            "text/plain".to_string(),
+            Utc::now(),
+        );
+        let message = ClipboardSyncMessage::from_payload(payload);
+    
+        mock_handler
+            .expect_push()
+            .withf(|m: &ClipboardSyncMessage| {
+                // 检查消息的关键属性
+                m.payload.is_some()
+            })
+            .times(1)
+            .returning(|_| Ok(()));
+    
+        manager.set_sync_handler(Arc::new(mock_handler)).await;
+        assert!(manager.push(message).await.is_ok());
+    }
 
-    //     manager.set_sync_handler(Arc::new(mock_handler)).await;
-    //     assert!(manager.push(message).await.is_ok());
-    // }
+    #[tokio::test]
+    async fn test_pull() {
+        let manager = RemoteSyncManager::new();
+        let mut mock_handler = MockRemoteClipboardSync::new();
+        let payload = Payload::new_text(
+            Bytes::from("test_data".to_string()),
+            "text/plain".to_string(),
+            Utc::now(),
+        );
+        let message = ClipboardSyncMessage::from_payload(payload.clone());
 
-    // #[tokio::test]
-    // async fn test_pull() {
-    //     let manager = RemoteSyncManager::new();
-    //     let mut mock_handler = MockRemoteClipboardSync::new();
-    //     let payload = Payload::new_text(
-    //         Bytes::from("test_data".to_string()),
-    //         "text/plain".to_string(),
-    //         Utc::now(),
-    //     );
+        mock_handler
+            .expect_pull()
+            .with(eq(None))
+            .times(1)
+            .returning(move |_| Ok(message.clone()));
 
-    //     let payload_clone = payload.clone();
-    //     mock_handler
-    //         .expect_pull()
-    //         .with(eq(None))
-    //         .times(1)
-    //         .returning(move |_| Ok(Some(payload_clone.clone())));
-
-    //     manager.set_sync_handler(Arc::new(mock_handler)).await;
-    //     let received_payload = manager.pull(None).await.unwrap().unwrap();
-    //     assert_eq!(payload, received_payload);
-    // }
+        manager.set_sync_handler(Arc::new(mock_handler)).await;
+        let received_payload = manager.pull(None).await.unwrap();
+        assert_eq!(payload, received_payload.payload.unwrap());
+    }
 
     #[tokio::test]
     async fn test_start() {
