@@ -4,14 +4,16 @@ use chrono::Utc;
 use image::ImageReader;
 use serial_test::serial;
 use std::fs;
-use std::io::Write;
-use std::{fs::File, path::PathBuf};
+use std::path::PathBuf;
 use uniclipboard::{LocalClipboard, LocalClipboardTrait, Payload};
 
 // #[tokio::test]
 // #[cfg_attr(not(feature = "integration_tests"), ignore)]
 // #[serial]
 // async fn test_read_image_from_local_clipboard() {
+//     use std::io::Write;
+//     use std::fs::File;
+
 //     let handler = LocalClipboard::new();
 
 //     let payload = handler.read().await.unwrap();
