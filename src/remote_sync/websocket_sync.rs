@@ -16,7 +16,7 @@ use tokio_tungstenite::tungstenite::http::Uri;
 #[derive(Clone)]
 pub struct WebSocketSync {
     server: Arc<WebSocketHandler>,
-    connected_devices: Arc<RwLock<HashMap<String, WebSocketClient>>>,
+    connected_devices: Arc<RwLock<HashMap<String, WebSocketClient>>>, // ip:port -> WebSocketClient
     peer_device_addr: Option<String>,
     peer_device_port: Option<u16>,
     peer_device_connected: Arc<RwLock<Option<bool>>>,
@@ -109,13 +109,40 @@ impl WebSocketSync {
         let server = self.server.clone();
         let connected_devices = self.connected_devices.clone();
         let peer_device_connected = self.peer_device_connected.clone();
+        let peer_device_addr = self.peer_device_addr.clone();
+        let peer_device_port = self.peer_device_port.clone();
 
         tokio::spawn(async move {
-            while let Ok(Some(device)) = server.subscribe_device_offline().await {
-                info!("A device offline: {}", device);
-                let mut connected_devices = connected_devices.write().await;
-                connected_devices.remove(&device.id);
-                *peer_device_connected.write().await = Some(false);
+            while let Ok(Some(addr)) = server.subscribe_device_offline().await {
+                info!("A device offline: {}", addr);
+                // 这里的 ip 和 port ，是指的是客户端的 ip 和 port
+                // 而 connected_devices 中存储的是对方的 ip 和对方的服务端口
+                // 所以需要查询出设备信息
+                let device = {
+                    let guard = get_device_manager().lock().unwrap();
+                    guard.get_device_by_ip_and_port(
+                        &addr.ip().to_string(),
+                        addr.port(),
+                    ).cloned()
+                };
+
+                match device {
+                    Some(device) => {
+                        let mut connected_devices = connected_devices.write().await;
+                        let ip = device.ip.as_ref().unwrap();
+                        let server_port = device.server_port.as_ref().unwrap();
+
+                        if *ip == peer_device_addr.clone().unwrap_or("".to_string())
+                            && *server_port == peer_device_port.unwrap_or(0)
+                        {
+                            *peer_device_connected.write().await = Some(false);
+                        }
+                        connected_devices.remove(&format!("{}:{}", ip, server_port));
+                    }
+                    None => {
+                        error!("Device not found: {}", addr);
+                    }
+                }
             }
         });
         Ok(())
@@ -133,7 +160,7 @@ impl WebSocketSync {
 
         let mut client = WebSocketClient::new(uri);
         client.connect().await?;
-        client.register().await?;
+        client.register(None).await?;
         client.sync_device_list().await?;
 
         let mut connected_devices = self.connected_devices.write().await;
@@ -163,7 +190,7 @@ impl WebSocketSync {
         let mut client = WebSocketClient::new(uri);
         client.connect().await?;
         *self.peer_device_connected.write().await = Some(true);
-        client.register().await?;
+        client.register(None).await?;
         let mut connected_devices = self.connected_devices.write().await;
         connected_devices.insert(format!("{}:{}", peer_device_addr, peer_device_port), client);
         Ok(())

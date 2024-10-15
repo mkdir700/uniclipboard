@@ -25,8 +25,8 @@ pub struct WebSocketHandler {
     clipboard_message_sync_receiver: Arc<Mutex<mpsc::Receiver<ClipboardSyncMessage>>>,
     device_online_sender: Arc<Mutex<mpsc::Sender<Device>>>,
     device_online_receiver: Arc<Mutex<mpsc::Receiver<Device>>>,
-    device_offline_sender: Arc<Mutex<mpsc::Sender<Device>>>,
-    device_offline_receiver: Arc<Mutex<mpsc::Receiver<Device>>>,
+    device_offline_sender: Arc<Mutex<mpsc::Sender<SocketAddr>>>,
+    device_offline_receiver: Arc<Mutex<mpsc::Receiver<SocketAddr>>>,
 }
 
 impl WebSocketHandler {
@@ -51,7 +51,7 @@ impl WebSocketHandler {
         let client_rcv = UnboundedReceiverStream::new(client_rcv);
 
         let client_id = match addr {
-            Some(addr) => addr.ip().to_string(),
+            Some(addr) => format!("{}:{}", addr.ip(), addr.port()),
             None => String::new(),
         };
         if client_id.is_empty() {
@@ -75,7 +75,7 @@ impl WebSocketHandler {
             }
         }));
 
-        info!("Client {} connected", client_id);
+        info!("Client [{}] connected", client_id);
         while let Some(result) = client_ws_rcv.next().await {
             let msg = match result {
                 Ok(msg) => msg,
@@ -87,19 +87,20 @@ impl WebSocketHandler {
             self.handle_message(client_id.clone(), msg, addr)
                 .await;
         }
-        info!("Client {} disconnected", client_id);
-        self.client_disconnected(client_id).await;
+        info!("Client [{}] disconnected", client_id);
+        self.client_disconnected(client_id, addr).await;
     }
 
-    async fn client_disconnected(&self, client_id: String) {
+    async fn client_disconnected(&self, client_id: String, addr: Option<SocketAddr>,) {
+        // client_id 是 ip+port 的方式组合字符串
         self.sessions.write().await.remove(&client_id);
-        let device_manager = get_device_manager();
-        let device = {
-            let device_manager = device_manager.lock();
-            device_manager.unwrap().get(&client_id).cloned()
-        };
-        if let Some(device) = device {
-            let _ = self.device_offline_sender.lock().await.send(device).await;
+        match addr {
+            Some(addr) => {
+                let _ = self.device_offline_sender.lock().await.send(addr).await;
+            }
+            None => {
+                error!("Client disconnected, but addr is None");
+            }
         }
     }
 
@@ -309,7 +310,7 @@ impl WebSocketHandler {
     }
 
     /// 用于外部订阅，接收设备下线
-    pub async fn subscribe_device_offline(&self) -> Result<Option<Device>> {
+    pub async fn subscribe_device_offline(&self) -> Result<Option<SocketAddr>> {
         let reader = self.device_offline_receiver.clone();
         loop {
             let data = reader.lock().await.recv().await;
