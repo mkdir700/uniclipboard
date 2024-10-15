@@ -1,6 +1,5 @@
 use anyhow::Result;
 use log::{error, info};
-use tokio::task::JoinHandle;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::select;
@@ -22,7 +21,6 @@ pub struct UniClipboard {
     is_paused: Arc<RwLock<bool>>,
     last_payload: Arc<RwLock<Option<Payload>>>,
     webserver: Arc<WebServer>,
-    webserver_handle: Arc<RwLock<Option<JoinHandle<()>>>>,
 }
 
 impl UniClipboard {
@@ -40,7 +38,6 @@ impl UniClipboard {
             is_paused: Arc::new(RwLock::new(false)),
             last_payload: Arc::new(RwLock::new(None)),
             webserver,
-            webserver_handle: Arc::new(RwLock::new(None)),
         }
     }
 
@@ -81,12 +78,12 @@ impl UniClipboard {
 
         let webserver = self.webserver.clone();
         // 启动 Web 服务器
-        let webserver_handle = tokio::spawn(async move {
+        tokio::spawn(async move {
             if let Err(e) = webserver.run().await {
                 error!("Web server error: {:?}", e);
             }
         });
-        *self.webserver_handle.write().await = Some(webserver_handle);
+
         Ok(())
     }
 
@@ -188,9 +185,7 @@ impl UniClipboard {
         self.remote_sync.stop().await?;
 
         // 停止 Web 服务器
-        if let Some(handle) = self.webserver_handle.read().await.as_ref() {
-            handle.abort();
-        }
+        self.webserver.shutdown().await?;
 
         Ok(())
     }
@@ -329,13 +324,15 @@ impl UniClipboardBuilder {
 
 #[cfg(test)]
 mod tests {
-    use crate::{message::ClipboardSyncMessage, remote_sync::RemoteClipboardSync};
+    use crate::{
+        message::ClipboardSyncMessage, remote_sync::RemoteClipboardSync, WebSocketHandler,
+    };
 
     use super::*;
     use anyhow::Result;
     use async_trait::async_trait;
     use bytes::Bytes;
-    use std::sync::Arc;
+    use std::{net::SocketAddr, sync::Arc};
     use tokio::sync::Mutex;
 
     // 模拟本地剪贴板
@@ -443,11 +440,17 @@ mod tests {
         let key_mouse_monitor = Arc::new(MockKeyMouseMonitor {
             is_sleep: Arc::new(Mutex::new(false)),
         });
+        let websocket_handler = Arc::new(WebSocketHandler::new());
+        let webserver = WebServer::new(
+            SocketAddr::new("0.0.0.0".parse().unwrap(), 8114),
+            websocket_handler,
+        );
 
         let uni_clipboard = UniClipboardBuilder::new()
             .set_local_clipboard(clipboard)
             .set_remote_sync(remote_sync)
             .set_key_mouse_monitor(key_mouse_monitor)
+            .set_webserver(webserver)
             .build()
             .expect("Failed to build UniClipboard");
 
@@ -463,10 +466,16 @@ mod tests {
         let remote_sync = Arc::new(MockRemoteSync {
             content: Arc::new(Mutex::new(None)),
         });
+        let websocket_handler = Arc::new(WebSocketHandler::new());
+        let webserver = WebServer::new(
+            SocketAddr::new("0.0.0.0".parse().unwrap(), 8114),
+            websocket_handler,
+        );
 
         let uni_clipboard = UniClipboardBuilder::new()
             .set_local_clipboard(clipboard.clone())
             .set_remote_sync(remote_sync.clone())
+            .set_webserver(webserver)
             .build()
             .expect("Failed to build UniClipboard");
 
@@ -501,10 +510,16 @@ mod tests {
         let remote_sync = Arc::new(MockRemoteSync {
             content: Arc::new(Mutex::new(None)),
         });
+        let websocket_handler = Arc::new(WebSocketHandler::new());
+        let webserver = WebServer::new(
+            SocketAddr::new("0.0.0.0".parse().unwrap(), 8114),
+            websocket_handler,
+        );
 
         let uni_clipboard = UniClipboardBuilder::new()
             .set_local_clipboard(clipboard)
             .set_remote_sync(remote_sync)
+            .set_webserver(webserver)
             .build()
             .expect("Failed to build UniClipboard");
 
