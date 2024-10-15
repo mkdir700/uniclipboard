@@ -26,15 +26,10 @@ pub struct Config {
     pub enable_key_mouse_monitor: Option<bool>,
     pub key_mouse_monitor_sleep_timeout: Option<u64>, // ms
     pub enable_websocket: Option<bool>,
-    pub is_server: Option<bool>,
-    // websocket server 的地址
-    pub websocket_server_addr: Option<String>,
-    // websocket server 的端口
-    pub websocket_server_port: Option<u16>,
-    // 用于客户端连接的 websocket server 地址
-    pub connect_websocket_server_addr: Option<String>,
-    // 用于客户端连接的 websocket server 端口
-    pub connect_websocket_server_port: Option<u16>,
+    pub webserver_addr: Option<String>,
+    pub webserver_port: Option<u16>,
+    pub peer_device_addr: Option<String>,
+    pub peer_device_port: Option<u16>,
 }
 
 impl Config {
@@ -55,11 +50,10 @@ impl Config {
             enable_key_mouse_monitor: Some(true),
             key_mouse_monitor_sleep_timeout: Some(5000),
             enable_websocket: Some(true),
-            is_server: Some(true),
-            websocket_server_addr: Some("0.0.0.0".to_string()),
-            websocket_server_port: Some(8113),
-            connect_websocket_server_addr: None,
-            connect_websocket_server_port: None,
+            webserver_addr: Some("0.0.0.0".to_string()),
+            webserver_port: Some(8113),
+            peer_device_addr: None,
+            peer_device_port: None,
         }
     }
 
@@ -71,14 +65,11 @@ impl Config {
         if self.key_mouse_monitor_sleep_timeout.is_none() {
             self.key_mouse_monitor_sleep_timeout = default_config.key_mouse_monitor_sleep_timeout;
         }
-        if self.is_server.is_none() {
-            self.is_server = default_config.is_server;
+        if self.webserver_addr.is_none() {
+            self.webserver_addr = default_config.webserver_addr;
         }
-        if self.websocket_server_addr.is_none() {
-            self.websocket_server_addr = default_config.websocket_server_addr;
-        }
-        if self.websocket_server_port.is_none() {
-            self.websocket_server_port = default_config.websocket_server_port;
+        if self.webserver_port.is_none() {
+            self.webserver_port = default_config.webserver_port;
         }
         if self.device_name.is_none() {
             self.device_name = Some("未命名设备".to_string());
@@ -88,12 +79,6 @@ impl Config {
         }
         if self.enable_websocket.is_none() {
             self.enable_websocket = default_config.enable_websocket;
-        }
-        if self.connect_websocket_server_addr.is_none() {
-            self.connect_websocket_server_addr = default_config.connect_websocket_server_addr;
-        }
-        if self.connect_websocket_server_port.is_none() {
-            self.connect_websocket_server_port = default_config.connect_websocket_server_port;
         }
         if self.max_history_size.is_none() {
             self.max_history_size = default_config.max_history_size;
@@ -182,7 +167,12 @@ mod tests {
         let path = get_config_path().unwrap();
         assert_eq!(
             path,
-            PathBuf::from(dirs::config_dir().unwrap().join("uniclipboard").join("config.toml"))
+            PathBuf::from(
+                dirs::config_dir()
+                    .unwrap()
+                    .join("uniclipboard")
+                    .join("config.toml")
+            )
         );
     }
 }

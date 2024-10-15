@@ -1,5 +1,6 @@
 use super::traits::RemoteClipboardSync;
 use crate::config::CONFIG;
+use crate::message::ClipboardSyncMessage;
 use crate::{message::Payload, network::WebDAVClient};
 use anyhow::Result;
 use async_trait::async_trait;
@@ -101,8 +102,8 @@ impl RemoteClipboardSync for WebDavSync {
     /// # Errors
     ///
     /// This function will return an error if the upload to the WebDAV server fails.
-    async fn push(&self, payload: Payload) -> Result<()> {
-        let _path = self.client.upload(self.base_path.clone(), payload).await?;
+    async fn push(&self, message: ClipboardSyncMessage) -> Result<()> {
+        let _path = self.client.upload(self.base_path.clone(), message.payload.unwrap()).await?;
         // 删除旧的文件
         let max_history = CONFIG.read().unwrap().max_history_size;
         if let Some(max_history) = max_history {
@@ -140,7 +141,7 @@ impl RemoteClipboardSync for WebDavSync {
     /// This function will return an error if:
     /// - There's a failure in communicating with the WebDAV server
     /// - The latest file cannot be retrieved or parsed into a Payload
-    async fn pull(&self, timeout: Option<Duration>) -> Result<Payload> {
+    async fn pull(&self, timeout: Option<Duration>) -> Result<ClipboardSyncMessage> {
         // FIXME: 当前的逻辑，如果是在程序首次启动后，就会从云端拉取最新的
         // 应该给出选项，在程序启动后，是否立即从云端拉取最近的一个内容
         let start_time = Instant::now();
@@ -190,7 +191,7 @@ impl RemoteClipboardSync for WebDavSync {
                     let mut last_modified = self.last_modified.write().unwrap();
                     *last_modified = Some(modified);
                 }
-                return Ok(payload);
+                return Ok(ClipboardSyncMessage::from_payload(payload));
             }
 
             // 休眠 200ms

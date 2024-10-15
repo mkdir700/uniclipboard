@@ -1,7 +1,7 @@
 use std::{sync::Arc, time::Duration};
 
 use super::traits::{RemoteClipboardSync, RemoteSyncManagerTrait};
-use crate::message::Payload;
+use crate::message::ClipboardSyncMessage;
 use anyhow::Result;
 use tokio::sync::RwLock;
 use async_trait::async_trait;
@@ -25,16 +25,16 @@ impl RemoteSyncManagerTrait for RemoteSyncManager {
         *sync_handler = Some(handler);
     }
 
-    async fn push(&self, payload: Payload) -> Result<()> {
+    async fn push(&self, message: ClipboardSyncMessage) -> Result<()> {
         let sync_handler = self.sync_handler.read().await;
         if let Some(handler) = sync_handler.as_ref() {
-            handler.push(payload).await
+            handler.push(message).await
         } else {
             Err(anyhow::anyhow!("No sync handler set"))
         }
     }
 
-    async fn pull(&self, timeout: Option<Duration>) -> Result<Payload> {
+    async fn pull(&self, timeout: Option<Duration>) -> Result<ClipboardSyncMessage> {
         let sync_handler = self.sync_handler.read().await;
         if let Some(handler) = sync_handler.as_ref() {
             handler.pull(timeout).await
@@ -94,6 +94,7 @@ impl RemoteSyncManagerTrait for RemoteSyncManager {
 #[cfg(test)]
 mod tests {
     use crate::remote_sync::traits::MockRemoteClipboardSync;
+    use crate::message::{ClipboardSyncMessage, Payload};
 
     use super::*;
     use chrono::Utc;
@@ -118,15 +119,19 @@ mod tests {
             "text/plain".to_string(),
             Utc::now(),
         );
-        
+        let message = ClipboardSyncMessage::from_payload(payload);
+    
         mock_handler
             .expect_push()
-            .with(eq(payload.clone()))
+            .withf(|m: &ClipboardSyncMessage| {
+                // 检查消息的关键属性
+                m.payload.is_some()
+            })
             .times(1)
             .returning(|_| Ok(()));
-
+    
         manager.set_sync_handler(Arc::new(mock_handler)).await;
-        assert!(manager.push(payload).await.is_ok());
+        assert!(manager.push(message).await.is_ok());
     }
 
     #[tokio::test]
@@ -138,17 +143,17 @@ mod tests {
             "text/plain".to_string(),
             Utc::now(),
         );
+        let message = ClipboardSyncMessage::from_payload(payload.clone());
 
-        let payload_clone = payload.clone();
         mock_handler
             .expect_pull()
             .with(eq(None))
             .times(1)
-            .returning(move |_| Ok(payload_clone.clone()));
+            .returning(move |_| Ok(message.clone()));
 
         manager.set_sync_handler(Arc::new(mock_handler)).await;
         let received_payload = manager.pull(None).await.unwrap();
-        assert_eq!(payload, received_payload);
+        assert_eq!(payload, received_payload.payload.unwrap());
     }
 
     #[tokio::test]

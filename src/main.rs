@@ -11,11 +11,13 @@ mod network;
 mod remote_sync;
 mod uni_clipboard;
 mod utils;
-
+mod web;
+mod errors;
 use anyhow::Result;
 use console::style;
 use log::{error, info};
 use uni_clipboard::UniClipboardBuilder;
+use web::WebServer;
 use std::sync::Arc;
 
 use crate::cli::{interactive_input, parse_args};
@@ -23,6 +25,8 @@ use crate::clipboard::LocalClipboard;
 use crate::config::Config;
 use crate::remote_sync::RemoteSyncManagerTrait;
 use crate::remote_sync::{RemoteSyncManager, WebSocketSync};
+use crate::web::WebSocketHandler;
+use std::net::SocketAddr;
 
 // 新增函数用于显示标志
 fn display_banner() {
@@ -64,20 +68,31 @@ async fn main() -> Result<()> {
 
     let local_clipboard = Arc::new(LocalClipboard::new());
     let remote_sync_manager = Arc::new(RemoteSyncManager::new());
-    let websocket_sync = Arc::new(WebSocketSync::new(config.is_server.unwrap()));
+    let websocket_handler = Arc::new(WebSocketHandler::new());
+    let websocket_sync = Arc::new(WebSocketSync::new(websocket_handler.clone()));
+    let webserver = WebServer::new(
+        SocketAddr::new(
+            config.webserver_addr.unwrap().parse()?,
+            config.webserver_port.unwrap(),
+        ),
+        websocket_handler,
+    );
 
     remote_sync_manager.set_sync_handler(websocket_sync).await;
 
     let app = UniClipboardBuilder::new()
+        .set_webserver(webserver)
         .set_local_clipboard(local_clipboard)
         .set_remote_sync(remote_sync_manager)
         // .set_key_mouse_monitor(key_mouse_monitor)
         .build()?;
 
     match app.start().await {
-        Ok(_) => info!("UniClipboard started successfully"),
+        Ok(_) => {
+            info!("UniClipboard started successfully");
+            app.wait_for_stop().await?;
+        },
         Err(e) => error!("Failed to start UniClipboard: {}", e),
     }
-    app.wait_for_stop().await?;
     Ok(())
 }

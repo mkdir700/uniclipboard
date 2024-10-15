@@ -6,6 +6,17 @@ use serde_json;
 use std::fmt;
 use twox_hash::xxh3::hash64;
 
+use crate::device::Device;
+
+// pub enum FileType {
+//     Text,
+//     RichText,
+//     Image,
+//     ImageFile,
+//     File,
+//     Folder,
+// }
+
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub enum Payload {
     Text(TextPayload),
@@ -225,3 +236,67 @@ impl PartialEq for Payload {
 }
 
 impl Eq for Payload {}
+
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(tag = "type", content = "data")]
+pub enum WebSocketMessage {
+    ClipboardSync(ClipboardSyncMessage),
+    DeviceListSync(DeviceListData),
+    Register(Device),
+    Unregister(String),
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct ClipboardSyncMessage {
+    pub device_id: String,
+    pub file_code: String,
+    pub file_type: String,
+    pub file_size: u64,
+    pub payload: Option<Payload>,
+    pub timestamp: u64,
+}
+
+impl ClipboardSyncMessage {
+    pub fn from_payload(payload: Payload) -> Self {
+        // !这个方法只是暂时的，后续需要引入一个存储器来生成 file_code
+        let device_id = payload.get_device_id().to_string();
+        let timestamp = payload.get_timestamp().timestamp_millis() as u64;
+        let size = payload.get_content().len();
+        Self {
+            device_id,
+            file_code: "".to_string(),
+            file_type: "".to_string(),
+            file_size: size as u64,
+            payload: Some(payload),
+            timestamp,
+        }
+    }
+    /// 判断消息是否包含有效负载
+    ///
+    /// 内容较大时，可能不包含有效负载，只会有内容的元信息
+    pub fn contains_payload(&self) -> bool {
+        self.payload.is_some()
+    }
+
+    pub fn payload(&self) -> Option<Payload> {
+        self.payload.clone()
+    }
+}
+
+impl fmt::Display for ClipboardSyncMessage {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "ClipboardSyncData: {} {} {} {} {}",
+            self.device_id, self.file_code, self.file_type, self.file_size, self.timestamp
+        )
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct DeviceListData {
+    pub devices: Vec<Device>,
+    // 经转发过的设备ID列表
+    pub replay_device_ids: Vec<String>,
+}

@@ -2,8 +2,10 @@ use anyhow::Result;
 use bytes::Bytes;
 use chrono::Utc;
 use serial_test::serial;
+use uniclipboard::web::WebServer;
+use std::net::SocketAddr;
 use std::{sync::Arc, time::Duration};
-use uniclipboard::Payload;
+use uniclipboard::{Config, Payload, WebSocketHandler};
 use uniclipboard::{
     clipboard::LocalClipboard,
     config::CONFIG,
@@ -12,23 +14,33 @@ use uniclipboard::{
     RemoteSyncManagerTrait,
 };
 
-fn setup_config() {
+fn setup_config() -> Config {
     let mut config = CONFIG.write().unwrap();
-    config.websocket_server_addr = Some("127.0.0.1".to_string());
-    config.websocket_server_port = Some(8333);
-    config.connect_websocket_server_addr = Some("127.0.0.1".to_string());
-    config.connect_websocket_server_port = Some(8333);
+    config.webserver_addr = Some("127.0.0.1".to_string());
+    config.webserver_port = Some(8333);
+    config.peer_device_addr = Some("127.0.0.1".to_string());
+    config.peer_device_port = Some(8333);
+    config.clone()
 }
 
 // 辅助函数：创建测试用的 UniClipboard 实例
-async fn create_test_uni_clipboard(is_server: bool) -> Result<UniClipboard> {
+async fn create_test_uni_clipboard(config: Config) -> Result<UniClipboard> {
     let local_clipboard = Arc::new(LocalClipboard::new());
     let remote_sync_manager = Arc::new(RemoteSyncManager::new());
-    let websocket_sync = Arc::new(WebSocketSync::new(is_server));
+    let websocket_handler = Arc::new(WebSocketHandler::new());
+    let websocket_sync = Arc::new(WebSocketSync::new(websocket_handler.clone()));
+    let webserver = WebServer::new(
+        SocketAddr::new(
+            config.webserver_addr.unwrap().parse()?,
+            config.webserver_port.unwrap(),
+        ),
+        websocket_handler,
+    );
 
     remote_sync_manager.set_sync_handler(websocket_sync).await;
 
     UniClipboardBuilder::new()
+        .set_webserver(webserver)
         .set_local_clipboard(local_clipboard)
         .set_remote_sync(remote_sync_manager)
         .build()
@@ -38,8 +50,8 @@ async fn create_test_uni_clipboard(is_server: bool) -> Result<UniClipboard> {
 #[cfg_attr(not(feature = "integration_tests"), ignore)]
 #[serial]
 async fn test_uni_clipboard_start_stop() -> Result<()> {
-    setup_config();
-    let uni_clipboard = create_test_uni_clipboard(true).await?;
+    let config = setup_config();
+    let uni_clipboard = create_test_uni_clipboard(config).await?;
 
     assert!(uni_clipboard.start().await.is_ok(), "启动 UniClipboard 失败");
     assert!(uni_clipboard.start().await.is_err(), "重复启动 UniClipboard 应该失败");
@@ -53,8 +65,8 @@ async fn test_uni_clipboard_start_stop() -> Result<()> {
 #[cfg_attr(not(feature = "integration_tests"), ignore)]
 #[serial]
 async fn test_uni_clipboard_pause_resume() -> Result<()> {
-    setup_config();
-    let uni_clipboard = create_test_uni_clipboard(true).await?;
+    let config = setup_config();
+    let uni_clipboard = create_test_uni_clipboard(config).await?;
 
     assert!(uni_clipboard.start().await.is_ok(), "启动 UniClipboard 失败");
     assert!(uni_clipboard.pause().await.is_ok(), "暂停 UniClipboard 失败");
@@ -68,10 +80,10 @@ async fn test_uni_clipboard_pause_resume() -> Result<()> {
 #[cfg_attr(not(feature = "integration_tests"), ignore)]
 #[serial]
 async fn test_uni_clipboard_client_server_sync() -> Result<()> {
-    setup_config();
+    let config = setup_config();
     // 创建服务器和客户端实例
-    let server = create_test_uni_clipboard(true).await?;
-    let client = create_test_uni_clipboard(false).await?;
+    let server = create_test_uni_clipboard(config.clone()).await?;
+    let client = create_test_uni_clipboard(config).await?;
 
     // 启动服务器和客户端
     server.start().await?;
@@ -98,10 +110,10 @@ async fn test_uni_clipboard_client_server_sync() -> Result<()> {
 #[cfg_attr(not(feature = "integration_tests"), ignore)]
 #[serial]
 async fn test_uni_clipboard_server_to_client_sync() -> Result<()> {
-    setup_config();
+    let config = setup_config();
     // 创建服务器和客户端实例
-    let server = create_test_uni_clipboard(true).await?;
-    let client = create_test_uni_clipboard(false).await?;
+    let server = create_test_uni_clipboard(config.clone()).await?;
+    let client = create_test_uni_clipboard(config).await?;
 
     // 启动服务器和客户端
     server.start().await?;
@@ -127,8 +139,8 @@ async fn test_uni_clipboard_server_to_client_sync() -> Result<()> {
 #[cfg_attr(not(feature = "integration_tests"), ignore)]
 #[serial]
 async fn test_uni_clipboard_duplicate_content_handling() -> Result<()> {
-    setup_config();
-    let uni_clipboard = create_test_uni_clipboard(true).await?;
+    let config = setup_config();
+    let uni_clipboard = create_test_uni_clipboard(config).await?;
     uni_clipboard.start().await?;
 
     let clipboard = uni_clipboard.get_clipboard();
