@@ -10,7 +10,8 @@ ci:
 coverage:
 	cargo tarpaulin --out Html --output-dir ./tarpaulin-report
 
-coverage-integration:
+# 继承覆盖测试，需要真机设备
+icoverage:
 	cargo tarpaulin --config tarpaulin.toml
 
 build-all:
