@@ -26,8 +26,18 @@ pub fn get_device_manager() -> &'static Mutex<DeviceManager> {
 }
 
 impl Device {
-    pub fn new(id: String, ip: Option<String>, port: Option<u16>, server_port: Option<u16>) -> Self {
-        Self { id, ip, port, server_port }
+    pub fn new(
+        id: String,
+        ip: Option<String>,
+        port: Option<u16>,
+        server_port: Option<u16>,
+    ) -> Self {
+        Self {
+            id,
+            ip,
+            port,
+            server_port,
+        }
     }
 }
 
@@ -84,14 +94,14 @@ impl DeviceManager {
     }
 
     pub fn remove(&mut self, device_id: &str) -> Option<Device> {
-       self.devices.remove(device_id)
+        self.devices.remove(device_id)
     }
-    
+
     #[allow(dead_code)]
     pub fn get(&self, device_id: &str) -> Option<&Device> {
-       self.devices.get(device_id)
+        self.devices.get(device_id)
     }
-    
+
     #[allow(dead_code)]
     pub fn has(&self, device_id: &str) -> bool {
         self.devices.contains_key(device_id)
@@ -99,6 +109,16 @@ impl DeviceManager {
 
     pub fn get_all_devices(&self) -> Vec<&Device> {
         self.devices.values().collect()
+    }
+
+    /// 通过 ip 和 port 获取设备
+    pub fn get_device_by_ip_and_port(&self, ip: &str, port: u16) -> Option<&Device> {
+        self.devices.values().find(|device| {
+            device.ip.is_some()
+                && device.ip.as_ref().unwrap() == ip
+                && device.port.is_some()
+                && device.port.unwrap() == port
+        })
     }
 }
 
