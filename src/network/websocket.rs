@@ -12,7 +12,6 @@ use log::warn;
 use std::sync::Arc;
 use tokio::net::TcpStream;
 use tokio::sync::Mutex;
-use tokio::time::{interval, Duration};
 use tokio_tungstenite::connect_async;
 use tokio_tungstenite::tungstenite::http::Uri;
 use tokio_tungstenite::tungstenite::Message;
@@ -84,6 +83,7 @@ impl WebSocketClient {
         Ok(())
     }
 
+    #[allow(dead_code)]
     pub async fn receive_raw(&self) -> Result<Message> {
         let mut reader = if let Some(reader) = self.reader.as_ref() {
             reader.lock().await
@@ -154,14 +154,18 @@ impl WebSocketClient {
     }
 
     /// 向服务器注册当前设备
-    pub async fn register(&self) -> Result<()> {
-        let (device_id, server_port) = {
-            let c = CONFIG.read().unwrap();
-            (c.device_id.clone(), c.webserver_port)
-        };
+    /// 如果 device 参数为 None，则默认读取配置文件中的设备信息用于注册
+    pub async fn register(&self, device: Option<Device>) -> Result<()> {
+        let device = device.unwrap_or_else(|| {
+            let (device_id, server_port) = {
+                let c = CONFIG.read().unwrap();
+                (c.device_id.clone(), c.webserver_port)
+            };
+            Device::new(device_id, None, None, server_port)
+        });
 
         let web_socket_message =
-            WebSocketMessage::Register(Device::new(device_id, None, None, server_port));
+            WebSocketMessage::Register(device);
         let message = serde_json::to_string(&web_socket_message)?;
         let mut writer = if let Some(writer) = self.writer.as_ref() {
             writer.lock().await
@@ -195,147 +199,27 @@ impl WebSocketClient {
         Ok(())
     }
 
-    pub async fn start_ping_task(&self, interval_secs: u64) {
-        let mut ping_interval = interval(Duration::from_secs(interval_secs));
-        let writer = self.writer.clone();
+    // pub async fn start_ping_task(&self, interval_secs: u64) {
+    //     let mut ping_interval = interval(Duration::from_secs(interval_secs));
+    //     let writer = self.writer.clone();
 
-        tokio::spawn(async move {
-            loop {
-                tokio::select! {
-                    _ = ping_interval.tick() => {
-                        if let Some(writer) = writer.as_ref() {
-                            let mut writer = writer.lock().await;
-                            if let Err(e) = writer.send(Message::Ping(vec![])).await {
-                                error!("发送 ping 失败: {}", e);
-                                break;
-                            }
-                        } else {
-                            error!("WebSocket 写入器不可用");
-                            break;
-                        }
-                    }
-                }
-            }
-        });
-    }
+    //     tokio::spawn(async move {
+    //         loop {
+    //             tokio::select! {
+    //                 _ = ping_interval.tick() => {
+    //                     if let Some(writer) = writer.as_ref() {
+    //                         let mut writer = writer.lock().await;
+    //                         if let Err(e) = writer.send(Message::Ping(vec![])).await {
+    //                             error!("发送 ping 失败: {}", e);
+    //                             break;
+    //                         }
+    //                     } else {
+    //                         error!("WebSocket 写入器不可用");
+    //                         break;
+    //                     }
+    //                 }
+    //             }
+    //         }
+    //     });
+    // }
 }
-
-// #[cfg(test)]
-// mod tests {
-//     use super::*;
-//     use bytes::Bytes;
-//     use chrono::Utc;
-//     use serial_test::serial;
-//     use std::time::Duration;
-
-//     // 辅助函数：创建一个WebSocketServer并运行它
-//     async fn setup_server() -> WebSocketServer {
-//         let server = WebSocketServer::new();
-//         let server_clone = server.clone();
-//         tokio::spawn(async move {
-//             server_clone.run("127.0.0.1:8080").await.unwrap();
-//         });
-//         tokio::time::sleep(Duration::from_millis(100)).await; // 给服务器一些启动时间
-//         server
-//     }
-
-//     #[tokio::test]
-//     #[serial]
-//     async fn test_websocket_server_creation() {
-//         let server = WebSocketServer::new();
-//         assert!(server.clients.lock().await.is_empty());
-//     }
-
-//     #[tokio::test]
-//     #[serial]
-//     async fn test_websocket_client_creation() {
-//         let uri = "ws://127.0.0.1:8080".parse().unwrap();
-//         let client = WebSocketClient::new(uri);
-//         assert!(client.writer.is_none());
-//         assert!(client.reader.is_none());
-//     }
-
-//     #[tokio::test]
-//     #[serial]
-//     async fn test_websocket_connection() {
-//         let _server = setup_server().await;
-
-//         let uri = "ws://127.0.0.1:8080".parse().unwrap();
-//         let mut client = WebSocketClient::new(uri);
-
-//         assert!(client.connect().await.is_ok());
-//         assert!(client.writer.is_some());
-//         assert!(client.reader.is_some());
-//     }
-
-//     #[tokio::test]
-//     #[serial]
-//     async fn test_websocket_send_receive() {
-//         let server = setup_server().await;
-
-//         let uri = "ws://127.0.0.1:8080".parse().unwrap();
-//         let mut client = WebSocketClient::new(uri);
-//         client.connect().await.unwrap();
-
-//         // 注册客户端
-//         client.register().await.unwrap();
-
-//         // 发送消息
-//         let payload = Payload::new_text(
-//             Bytes::from("test_content".to_string()),
-//             "test_id".to_string(),
-//             Utc::now(),
-//         );
-//         client.send(payload.clone()).await.unwrap();
-
-//         // 服务器应该能接收到消息
-//         let received = server.subscribe().await.unwrap().unwrap();
-//         assert_eq!(received, payload);
-//     }
-
-//     #[tokio::test]
-//     #[serial]
-//     async fn test_websocket_broadcast() {
-//         let server = setup_server().await;
-
-//         // 创建两个客户端
-//         let uri: Uri = "ws://127.0.0.1:8080".parse().unwrap();
-//         let mut client1 = WebSocketClient::new(uri.clone());
-//         let mut client2 = WebSocketClient::new(uri);
-
-//         client1.connect().await.unwrap();
-//         client2.connect().await.unwrap();
-
-//         client1.register().await.unwrap();
-//         client2.register().await.unwrap();
-
-//         // 广播消息
-//         let payload = Payload::new_text(
-//             Bytes::from("broadcast_content".to_string()),
-//             "broadcast_id".to_string(),
-//             Utc::now(),
-//         );
-//         server.broadcast(payload.clone(), None).await.unwrap();
-
-//         // 两个客户端都应该收到消息
-//         let received1 = client1.receive().await.unwrap();
-//         let received2 = client2.receive().await.unwrap();
-
-//         assert_eq!(received1, payload);
-//         assert_eq!(received2, payload);
-//     }
-//     #[tokio::test]
-//     #[serial]
-//     async fn test_websocket_disconnect() {
-//         let _ = setup_server().await;
-
-//         let uri = "ws://127.0.0.1:8080".parse().unwrap();
-//         let mut client = WebSocketClient::new(uri);
-//         client.connect().await.unwrap();
-
-//         client.disconnect().await.unwrap();
-
-//         assert!(client.writer.is_none());
-//         assert!(client.reader.is_none());
-//     }
-// }
