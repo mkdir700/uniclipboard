@@ -5,12 +5,14 @@ use anyhow::Result;
 use async_trait::async_trait;
 use clipboard_rs::WatcherShutdown;
 use clipboard_rs::{ClipboardWatcher, ClipboardWatcherContext};
-use log::debug;
+use log::{debug, info};
 use log::error;
 use std::sync::{Arc, Mutex};
 use std::thread;
 use tokio::sync::{mpsc, Notify};
 use tokio::sync::{Mutex as TokioMutex, RwLock};
+use tokio::time::{Duration, Instant};
+use std::sync::atomic::{AtomicBool, Ordering};
 
 #[derive(Clone)]
 pub struct LocalClipboard {
@@ -20,6 +22,9 @@ pub struct LocalClipboard {
     watcher: Arc<Mutex<ClipboardWatcherContext<RsClipboardChangeHandler>>>,
     watcher_shutdown: Arc<TokioMutex<Option<WatcherShutdown>>>,
     rw_lock: Arc<RwLock<bool>>,
+    last_write: Arc<TokioMutex<Instant>>,
+    write_cooldown: Duration,
+    is_self_write: Arc<AtomicBool>,
 }
 
 impl LocalClipboard {
@@ -39,6 +44,9 @@ impl LocalClipboard {
             watcher: Arc::new(Mutex::new(watcher)),
             watcher_shutdown: Arc::new(TokioMutex::new(Some(watcher_shutdown))),
             rw_lock: Arc::new(RwLock::new(false)),
+            last_write: Arc::new(TokioMutex::new(Instant::now())),
+            write_cooldown: Duration::from_millis(500),  // 在 500ms 内，忽略自己写入导致的剪贴板变更事件
+            is_self_write: Arc::new(AtomicBool::new(false)),
         }
     }
 }
@@ -102,6 +110,17 @@ impl LocalClipboardTrait for LocalClipboard {
                     continue;
                 }
 
+                // 如果是因为刚写入剪切板导致的剪切板变更事件，则跳过本次
+                let now = Instant::now();
+                let last_write = *self_clone.last_write.lock().await;
+                if now.duration_since(last_write) < self_clone.write_cooldown {
+                    if self_clone.is_self_write.load(Ordering::SeqCst) {
+                        info!("Skip clipboard change event because of self write");
+                        self_clone.is_self_write.store(false, Ordering::SeqCst);
+                        continue;
+                    }
+                }
+
                 if *paused.0.lock().await {
                     paused.1.notified().await;
                     continue;
@@ -132,7 +151,13 @@ impl LocalClipboardTrait for LocalClipboard {
         Ok(())
     }
 
+    /// 写入剪贴板内容，并设置自写标志和更新最后写入时间
     async fn set_clipboard_content(&self, content: Payload) -> Result<()> {
-        self.write(content).await
+        let result = self.write(content).await;
+        // 设置自写标志和更新最后写入时间
+        self.is_self_write.store(true, Ordering::SeqCst);
+        let mut last_write = self.last_write.lock().await;
+        *last_write = Instant::now();
+        result
     }
 }

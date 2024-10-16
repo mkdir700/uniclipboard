@@ -3,7 +3,7 @@ use std::time::Duration;
 use bytes::Bytes;
 use chrono::Utc;
 use serial_test::serial;
-use tokio::time::sleep;
+use tokio::time::{sleep, timeout};
 use uniclipboard::{LocalClipboard, Payload, LocalClipboardTrait};
 
 #[tokio::test]
@@ -79,20 +79,38 @@ async fn test_start_monitoring() {
     // 等待一小段时间，确保监控已经启动
     sleep(Duration::from_millis(100)).await;
 
-    // 准备测试数据
-    let test_content = "测试剪贴板内容";
-    let payload = Payload::new_text(Bytes::from(test_content), "test_device".to_string(), Utc::now());
+    // 测试场景1：自写操作应该被跳过
+    let test_content1 = "self write";
+    let payload1 = Payload::new_text(Bytes::from(test_content1), "test_device".to_string(), Utc::now());
 
-    // 模拟剪贴板变化
-    local_clipboard.set_clipboard_content(payload.clone()).await.expect("Failed to set clipboard content");
+    // 使用 write 方法写入内容（这应该触发自写标记）
+    local_clipboard.set_clipboard_content(payload1.clone()).await.expect("Failed to write content");
 
-    // 等待一小段时间，确保变化被检测到
-    sleep(Duration::from_millis(100)).await;
+    // 尝试接收变化通知，应该超时
+    match timeout(Duration::from_millis(1000), receiver.recv()).await {
+        Ok(Some(data)) => {
+            println!("Received unexpected change notification for self-write: {}", data);
+            panic!("Received unexpected change notification for self-write")
+        },
+        Ok(None) => panic!("Channel closed unexpectedly"),
+        Err(_) => println!("Correctly timed out waiting for self-write change"),
+    }
+
+    // 等待冷却时间过去
+    sleep(Duration::from_millis(600)).await;
+
+    // 测试场景2：非自写操作应该被检测到
+    let test_content2 = "非自写测试内容";
+    let payload2 = Payload::new_text(Bytes::from(test_content2), "test_device".to_string(), Utc::now());
+
+    // 模拟外部剪贴板变化
+    local_clipboard.write(payload2.clone()).await.expect("Failed to set clipboard content");
 
     // 尝试接收变化通知
-    match tokio::time::timeout(Duration::from_secs(5), receiver.recv()).await {
+    match timeout(Duration::from_secs(1), receiver.recv()).await {
         Ok(Some(received_payload)) => {
-            assert_eq!(received_payload.get_content(), payload.get_content());
+            assert_eq!(received_payload.get_content(), payload2.get_content());
+            println!("Correctly received change notification for non-self-write");
         },
         Ok(None) => panic!("Channel closed unexpectedly"),
         Err(_) => panic!("Timeout waiting for clipboard change"),
@@ -121,7 +139,7 @@ async fn test_pause_and_resume() {
     let payload1 = Payload::new_text(Bytes::from(test_content1), "test_device".to_string(), Utc::now());
 
     // 设置剪贴板内容
-    local_clipboard.set_clipboard_content(payload1.clone()).await.expect("Failed to set clipboard content");
+    local_clipboard.write(payload1.clone()).await.expect("Failed to set clipboard content");
 
     // 等待并接收第一次变化
     let received_payload1 = tokio::time::timeout(Duration::from_secs(5), receiver.recv()).await
@@ -137,7 +155,7 @@ async fn test_pause_and_resume() {
     let payload2 = Payload::new_text(Bytes::from(test_content2), "test_device".to_string(), Utc::now());
 
     // 在暂停状态下设置剪贴板内容
-    local_clipboard.set_clipboard_content(payload2.clone()).await.expect("Failed to set clipboard content");
+    local_clipboard.write(payload2.clone()).await.expect("Failed to set clipboard content");
 
     // 尝试接收变化，应该超时
     let timeout_result = tokio::time::timeout(Duration::from_secs(1), receiver.recv()).await;
@@ -152,7 +170,7 @@ async fn test_pause_and_resume() {
     let payload3 = Payload::new_text(Bytes::from(test_content3), "test_device".to_string(), Utc::now());
 
     // 在恢复状态下设置剪贴板内容
-    local_clipboard.set_clipboard_content(payload3.clone()).await.expect("Failed to set clipboard content");
+    local_clipboard.write(payload3.clone()).await.expect("Failed to set clipboard content");
 
     // 等待并接收恢复后的变化
     let received_payload3 = tokio::time::timeout(Duration::from_secs(5), receiver.recv()).await
