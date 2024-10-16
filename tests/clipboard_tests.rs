@@ -139,7 +139,7 @@ async fn test_pause_and_resume() {
     let payload1 = Payload::new_text(Bytes::from(test_content1), "test_device".to_string(), Utc::now());
 
     // 设置剪贴板内容
-    local_clipboard.set_clipboard_content(payload1.clone()).await.expect("Failed to set clipboard content");
+    local_clipboard.write(payload1.clone()).await.expect("Failed to set clipboard content");
 
     // 等待并接收第一次变化
     let received_payload1 = tokio::time::timeout(Duration::from_secs(5), receiver.recv()).await
@@ -155,7 +155,7 @@ async fn test_pause_and_resume() {
     let payload2 = Payload::new_text(Bytes::from(test_content2), "test_device".to_string(), Utc::now());
 
     // 在暂停状态下设置剪贴板内容
-    local_clipboard.set_clipboard_content(payload2.clone()).await.expect("Failed to set clipboard content");
+    local_clipboard.write(payload2.clone()).await.expect("Failed to set clipboard content");
 
     // 尝试接收变化，应该超时
     let timeout_result = tokio::time::timeout(Duration::from_secs(1), receiver.recv()).await;
@@ -170,7 +170,7 @@ async fn test_pause_and_resume() {
     let payload3 = Payload::new_text(Bytes::from(test_content3), "test_device".to_string(), Utc::now());
 
     // 在恢复状态下设置剪贴板内容
-    local_clipboard.set_clipboard_content(payload3.clone()).await.expect("Failed to set clipboard content");
+    local_clipboard.write(payload3.clone()).await.expect("Failed to set clipboard content");
 
     // 等待并接收恢复后的变化
     let received_payload3 = tokio::time::timeout(Duration::from_secs(5), receiver.recv()).await
