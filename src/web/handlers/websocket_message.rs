@@ -18,6 +18,11 @@ use warp::ws::Message;
 use super::websocket::Clients;
 use crate::network::WebSocketClient;
 
+pub enum MessageSource {
+    IpPort(SocketAddr),
+    DeviceId(String),
+}
+
 #[derive(Clone)]
 pub struct WebsocketMessageHandler {
     clipboard_message_sync_sender: Arc<Mutex<mpsc::Sender<ClipboardSyncMessage>>>,
@@ -26,9 +31,9 @@ pub struct WebsocketMessageHandler {
     device_online_receiver: Arc<Mutex<mpsc::Receiver<Device>>>,
     device_offline_sender: Arc<Mutex<mpsc::Sender<SocketAddr>>>,
     device_offline_receiver: Arc<Mutex<mpsc::Receiver<SocketAddr>>>,
-    // 连接到本设备的设备
+    // 连接到本设备的设备, ip:port -> Client
     incoming_connections: Arc<RwLock<Clients>>,
-    // 本设备连接到的设备
+    // 本设备连接到的设备, device_id -> Client
     outgoing_connections: Arc<
         RwLock<
             HashMap<
@@ -41,8 +46,8 @@ pub struct WebsocketMessageHandler {
             >,
         >,
     >,
-    outgoing_connections_message_tx: Arc<Mutex<mpsc::Sender<WebSocketMessage>>>,
-    outgoing_connections_message_rx: Arc<Mutex<mpsc::Receiver<WebSocketMessage>>>,
+    outgoing_connections_message_tx: Arc<Mutex<mpsc::Sender<(String, WebSocketMessage)>>>,
+    outgoing_connections_message_rx: Arc<Mutex<mpsc::Receiver<(String, WebSocketMessage)>>>,
 }
 
 impl WebsocketMessageHandler {
@@ -150,6 +155,7 @@ impl WebsocketMessageHandler {
         let arc_client = Arc::new(RwLock::new(client));
         let arc_client_clone = arc_client.clone();
         let outgoing_connections_message_tx = self.outgoing_connections_message_tx.clone();
+        let id_clone = id.clone();
 
         let forward_message_task = tokio::spawn(async move {
             let mut message_rx = { arc_client.clone().read().await.subscribe() };
@@ -159,13 +165,13 @@ impl WebsocketMessageHandler {
                     let _ = outgoing_connections_message_tx
                         .lock()
                         .await
-                        .send(message)
+                        .send((id.clone(), message))
                         .await;
                 }
             }
         });
         clients.insert(
-            id.clone(),
+            id_clone,
             (arc_client_clone, message_rx, forward_message_task),
         );
     }
@@ -224,7 +230,7 @@ impl WebsocketMessageHandler {
         tokio::spawn(async move {
             loop {
                 let message = rx.lock().await.recv().await;
-                if let Some(message) = message {
+                if let Some((device_id, message)) = message {
                     let message = match message.to_json() {
                         Ok(text) => Message::text(text),
                         Err(e) => {
@@ -232,7 +238,7 @@ impl WebsocketMessageHandler {
                             continue;
                         }
                     };
-                    self_clone.handle_message(message, None).await;
+                    self_clone.handle_message(message, MessageSource::DeviceId(device_id)).await;
                 }
             }
         });
@@ -251,7 +257,7 @@ impl WebsocketMessageHandler {
         Ok(())
     }
 
-    pub async fn handle_message(&self, msg: Message, addr: Option<SocketAddr>) {
+    pub async fn handle_message(&self, msg: Message, message_source: MessageSource) {
         if msg.is_text() {
             if let Ok(text) = msg.to_str() {
                 if text == "connect" {
@@ -260,18 +266,20 @@ impl WebsocketMessageHandler {
                 match serde_json::from_str::<WebSocketMessage>(text) {
                     Ok(websocket_message) => match websocket_message {
                         WebSocketMessage::ClipboardSync(data) => {
-                            self.handle_clipboard_sync(data).await;
+                            self.handle_clipboard_sync(data, message_source).await;
                         }
                         WebSocketMessage::DeviceListSync(data) => {
-                            self.handle_device_list_sync(data).await;
+                            self.handle_device_list_sync(data, message_source).await;
                         }
                         WebSocketMessage::Register(mut device) => {
-                            match addr {
-                                Some(addr) => {
+                            match message_source {
+                                MessageSource::IpPort(addr) => {
                                     device.ip = Some(addr.ip().to_string());
                                     device.port = Some(addr.port());
                                 }
-                                None => (),
+                                MessageSource::DeviceId(device_id) => {
+                                    device.id = device_id;
+                                }
                             }
                             self.handle_register(device).await;
                         }
@@ -322,7 +330,7 @@ impl WebsocketMessageHandler {
         }
     }
 
-    pub async fn handle_clipboard_sync(&self, data: ClipboardSyncMessage) {
+    pub async fn handle_clipboard_sync(&self, data: ClipboardSyncMessage, message_source: MessageSource) {
         {
             let tx = self.clipboard_message_sync_sender.lock().await;
             match tx.send(data.clone()).await {
@@ -330,14 +338,28 @@ impl WebsocketMessageHandler {
                 Err(e) => error!("Failed to send clipboard sync message: {}", e),
             }
         }
+
+        let excludes = match message_source {
+            MessageSource::IpPort(addr) => vec![format!("{}:{}", addr.ip(), addr.port())],
+            MessageSource::DeviceId(device_id) => vec![device_id],
+        };
+
+        // 排除同步消息的来源，否则将导致死循环
         let _ = self
-            .broadcast(&WebSocketMessage::ClipboardSync(data), &None)
+            .broadcast(
+                &WebSocketMessage::ClipboardSync(data),
+                &Some(excludes),
+            )
             .await;
         info!("Broadcasted clipboard sync to others");
     }
 
     /// 处理设备列表同步
-    pub async fn handle_device_list_sync(&self, mut data: DeviceListData) {
+    pub async fn handle_device_list_sync(
+        &self,
+        mut data: DeviceListData,
+        message_source: MessageSource,
+    ) {
         // 合并设备列表并返回新增的设备
         let _ = {
             let device_manager = get_device_manager();
@@ -367,7 +389,15 @@ impl WebsocketMessageHandler {
         }
 
         data.replay_device_ids.push(device_id.clone());
-        let excludes = data.replay_device_ids.clone();
+        let excludes1 = data.replay_device_ids.clone();
+
+        let excludes2 = match message_source {
+            MessageSource::IpPort(addr) => vec![format!("{}:{}", addr.ip(), addr.port())],
+            MessageSource::DeviceId(device_id) => vec![device_id],
+        };
+
+        // 合并 excludes1 和 excludes2
+        let excludes = excludes1.into_iter().chain(excludes2.into_iter()).collect();
 
         // 广播给其他设备，用于他们更新设备列表
         let _ = self

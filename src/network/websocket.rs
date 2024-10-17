@@ -70,6 +70,9 @@ impl WebSocketClient {
                             }
                         }
                         Some(Err(e)) => {
+                            // TODO: 如果意外断开连接该如何处理？
+                            // 1. 尝试重连
+                            // 2. 发送消息通知上层
                             error!("WebSocket error: {}", e);
                             break;
                         }

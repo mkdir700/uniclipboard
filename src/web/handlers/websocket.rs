@@ -9,6 +9,7 @@ use tokio::sync::mpsc;
 use tokio_stream::wrappers::UnboundedReceiverStream;
 use warp::ws::{Message, WebSocket};
 
+use super::websocket_message::MessageSource;
 use super::websocket_message::WebsocketMessageHandler;
 
 pub type Clients = HashMap<String, mpsc::UnboundedSender<Result<Message, warp::Error>>>;
@@ -64,7 +65,13 @@ impl WebSocketHandler {
                     break;
                 }
             };
-            self.message_handler.handle_message(msg, addr).await;
+            if let Some(addr) = addr {
+                self.message_handler
+                    .handle_message(msg, MessageSource::IpPort(addr))
+                    .await;
+            } else {
+                error!("Client [{}] connected, but addr is None", client_id);
+            }
         }
         info!("Client [{}] disconnected", client_id);
         self.client_disconnected(client_id, addr).await;
