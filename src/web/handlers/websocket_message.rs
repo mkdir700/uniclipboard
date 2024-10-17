@@ -24,7 +24,7 @@ pub enum MessageSource {
 }
 
 #[derive(Clone)]
-pub struct WebsocketMessageHandler {
+pub struct WebSocketMessageHandler {
     clipboard_message_sync_sender: Arc<Mutex<mpsc::Sender<ClipboardSyncMessage>>>,
     clipboard_message_sync_receiver: Arc<Mutex<mpsc::Receiver<ClipboardSyncMessage>>>,
     device_online_sender: Arc<Mutex<mpsc::Sender<Device>>>,
@@ -50,7 +50,7 @@ pub struct WebsocketMessageHandler {
     outgoing_connections_message_rx: Arc<Mutex<mpsc::Receiver<(String, WebSocketMessage)>>>,
 }
 
-impl WebsocketMessageHandler {
+impl WebSocketMessageHandler {
     pub fn new() -> Self {
         let (clipboard_message_sync_sender, clipboard_message_sync_receiver) = mpsc::channel(100);
         let (device_online_sender, device_online_receiver) = mpsc::channel(20);
@@ -148,7 +148,7 @@ impl WebsocketMessageHandler {
     }
 }
 
-impl WebsocketMessageHandler {
+impl WebSocketMessageHandler {
     pub async fn add_outgoing_connection(&self, id: String, client: WebSocketClient) {
         let mut clients = self.outgoing_connections.write().await;
         let message_rx = client.subscribe();
@@ -245,7 +245,7 @@ impl WebsocketMessageHandler {
     }
 }
 
-impl WebsocketMessageHandler {
+impl WebSocketMessageHandler {
     /// 向本设备连接到的设备发送消息，以及向连接到本设备的设备发送消息
     pub async fn broadcast(
         &self,

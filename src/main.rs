@@ -17,7 +17,7 @@ use anyhow::Result;
 use console::style;
 use log::{error, info};
 use uni_clipboard::UniClipboardBuilder;
-use web::{WebServer, WebsocketMessageHandler};
+use web::{WebServer, WebSocketMessageHandler};
 use std::sync::Arc;
 
 use crate::cli::{interactive_input, parse_args};
@@ -68,7 +68,7 @@ async fn main() -> Result<()> {
 
     let local_clipboard = Arc::new(LocalClipboard::new());
     let remote_sync_manager = Arc::new(RemoteSyncManager::new());
-    let websocket_message_handler = Arc::new(WebsocketMessageHandler::new());
+    let websocket_message_handler = Arc::new(WebSocketMessageHandler::new());
     let websocket_handler = Arc::new(WebSocketHandler::new(websocket_message_handler.clone()));
     let websocket_sync = Arc::new(WebSocketSync::new(websocket_message_handler.clone()));
     let webserver = WebServer::new(

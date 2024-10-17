@@ -10,16 +10,16 @@ use tokio_stream::wrappers::UnboundedReceiverStream;
 use warp::ws::{Message, WebSocket};
 
 use super::websocket_message::MessageSource;
-use super::websocket_message::WebsocketMessageHandler;
+use super::websocket_message::WebSocketMessageHandler;
 
 pub type Clients = HashMap<String, mpsc::UnboundedSender<Result<Message, warp::Error>>>;
 
 pub struct WebSocketHandler {
-    message_handler: Arc<WebsocketMessageHandler>,
+    message_handler: Arc<WebSocketMessageHandler>,
 }
 
 impl WebSocketHandler {
-    pub fn new(websocket_message_handler: Arc<WebsocketMessageHandler>) -> Self {
+    pub fn new(websocket_message_handler: Arc<WebSocketMessageHandler>) -> Self {
         Self {
             message_handler: websocket_message_handler,
         }

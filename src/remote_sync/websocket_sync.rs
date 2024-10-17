@@ -2,7 +2,7 @@ use super::traits::RemoteClipboardSync;
 use crate::config::CONFIG;
 use crate::device::{get_device_manager, Device};
 use crate::message::WebSocketMessage;
-use crate::web::handlers::websocket_message::WebsocketMessageHandler;
+use crate::web::handlers::websocket_message::WebSocketMessageHandler;
 use crate::{message::ClipboardSyncMessage, network::WebSocketClient};
 use anyhow::Result;
 use async_trait::async_trait;
@@ -14,14 +14,14 @@ use tokio_tungstenite::tungstenite::http::Uri;
 
 #[derive(Clone)]
 pub struct WebSocketSync {
-    websocket_message_handler: Arc<WebsocketMessageHandler>,
+    websocket_message_handler: Arc<WebSocketMessageHandler>,
     peer_device_addr: Option<String>,
     peer_device_port: Option<u16>,
     peer_device_connected: Arc<RwLock<Option<bool>>>,
 }
 
 impl WebSocketSync {
-    pub fn new(websocket_message_handler: Arc<WebsocketMessageHandler>) -> Self {
+    pub fn new(websocket_message_handler: Arc<WebSocketMessageHandler>) -> Self {
         let peer_device_addr;
         let peer_device_port;
         {
