@@ -27,6 +27,7 @@ fn setup_config() -> Config {
 async fn create_test_uni_clipboard(config: Config) -> Result<UniClipboard> {
     let local_clipboard = Arc::new(LocalClipboard::new());
     let remote_sync_manager = Arc::new(RemoteSyncManager::new());
+    let websocket_message_handler = Arc::new(WebsocketMessageHandler::new());
     let websocket_handler = Arc::new(WebSocketHandler::new());
     let websocket_sync = Arc::new(WebSocketSync::new(websocket_handler.clone()));
     let webserver = WebServer::new(

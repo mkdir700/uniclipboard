@@ -23,4 +23,4 @@ pub use device::get_device_manager;
 pub use clipboard::LocalClipboardTrait;
 pub use remote_sync::RemoteSyncManagerTrait;
 pub use key_mouse_monitor::KeyMouseMonitorTrait;
-pub use web::WebSocketHandler;
+pub use web::{WebSocketHandler, WebsocketMessageHandler};

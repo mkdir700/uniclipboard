@@ -1,7 +1,7 @@
 use log::warn;
 use once_cell::sync::Lazy;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fmt::{self, Display};
 use std::sync::Mutex;
 
@@ -15,6 +15,7 @@ pub struct Device {
 
 pub struct DeviceManager {
     devices: HashMap<String, Device>,
+    online_devices: HashSet<String>,
 }
 
 pub static GLOBAL_DEVICE_MANAGER: Lazy<Mutex<DeviceManager>> =
@@ -64,6 +65,7 @@ impl DeviceManager {
     pub fn new() -> Self {
         Self {
             devices: HashMap::new(),
+            online_devices: HashSet::new(),
         }
     }
 
@@ -120,6 +122,8 @@ impl DeviceManager {
                 && device.port.unwrap() == port
         })
     }
+
+    
 }
 
 #[cfg(test)]
