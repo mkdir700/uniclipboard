@@ -310,7 +310,7 @@ impl WebSocketMessageHandler {
                                         register_device_message.id,
                                         Some(addr.ip().to_string()),
                                         Some(addr.port()),
-                                        Some(addr.port()),
+                                        register_device_message.server_port,
                                     )
                                 }
                                 MessageSource::DeviceId(device_id) => {
@@ -462,6 +462,7 @@ impl WebSocketMessageHandler {
         // 合并 excludes1 和 excludes2
         let excludes = excludes1.into_iter().chain(excludes2.into_iter()).collect();
 
+        info!("Broadcasting device list sync to others");
         // 广播给其他设备，用于他们更新设备列表
         let _ = self
             .broadcast(&WebSocketMessage::DeviceListSync(data), &Some(excludes))
