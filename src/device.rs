@@ -4,6 +4,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fmt::{self, Display};
 use std::sync::Mutex;
+use tokio::sync::broadcast;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Device {
@@ -21,9 +22,19 @@ pub struct DeviceManager {
 pub static GLOBAL_DEVICE_MANAGER: Lazy<Mutex<DeviceManager>> =
     Lazy::new(|| Mutex::new(DeviceManager::new()));
 
+pub static NEW_DEVICE_BROADCASTER: Lazy<broadcast::Sender<Device>> = Lazy::new(|| {
+    let (sender, _) = broadcast::channel(20);
+    sender
+});
+
 // 可选：添加一个便捷函数来获取 DeviceManager 的引用
 pub fn get_device_manager() -> &'static Mutex<DeviceManager> {
     &GLOBAL_DEVICE_MANAGER
+}
+
+// 新增：全局函数用于订阅新设备
+pub fn subscribe_new_devices() -> broadcast::Receiver<Device> {
+    NEW_DEVICE_BROADCASTER.subscribe()
 }
 
 impl Device {
@@ -80,9 +91,10 @@ impl DeviceManager {
     pub fn add(&mut self, device: Device) {
         let id = device.id.clone();
         if self.devices.contains_key(&id) {
-            warn!("Device will be overwrited: {}", id);
+            warn!("Device will be overwritten: {}", id);
         }
-        self.devices.insert(id, device);
+        self.devices.insert(id, device.clone());
+        let _ = NEW_DEVICE_BROADCASTER.send(device);
     }
 
     // pub fn merge(&mut self, devices: &Vec<Device>) {
@@ -118,6 +130,10 @@ impl DeviceManager {
     #[allow(dead_code)]
     pub fn has(&self, device_id: &str) -> bool {
         self.devices.contains_key(device_id)
+    }
+
+    pub fn get_all_devices(&self) -> Vec<&Device> {
+        self.devices.values().collect()
     }
 
     // 获取除了自己的所有设备
