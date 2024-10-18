@@ -71,15 +71,15 @@ async fn main() -> Result<()> {
     config.save(None)?;
 
     {
-        let mutex = get_device_manager();
-        let mut device = Device::new(
+        let mut mutex = get_device_manager().lock().unwrap();
+        let device = Device::new(
             config.device_id.clone(),
             Some(local_ip.clone()),
             None,
             Some(config.webserver_port.unwrap()),
         );
-        device.set_self_register(true);
-        mutex.lock().unwrap().add(device);
+        mutex.set_self_device(&device);
+        mutex.add(device);
     }
 
     // 暂时禁用

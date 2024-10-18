@@ -12,11 +12,11 @@ pub struct Device {
     pub ip: Option<String>,
     pub port: Option<u16>,
     pub server_port: Option<u16>,
-    pub self_register: bool,
 }
 
 pub struct DeviceManager {
     devices: HashMap<String, Device>,
+    self_device: Option<String>,
 }
 
 pub static GLOBAL_DEVICE_MANAGER: Lazy<Mutex<DeviceManager>> =
@@ -49,16 +49,7 @@ impl Device {
             ip,
             port,
             server_port,
-            self_register: false,
         }
-    }
-
-    pub fn is_self_register(&self) -> bool {
-        self.self_register
-    }
-
-    pub fn set_self_register(&mut self, self_register: bool) {
-        self.self_register = self_register;
     }
 }
 
@@ -85,7 +76,12 @@ impl DeviceManager {
     pub fn new() -> Self {
         Self {
             devices: HashMap::new(),
+            self_device: None,
         }
+    }
+
+    pub fn set_self_device(&mut self, device: &Device) {
+        self.self_device = Some(device.id.clone());
     }
 
     pub fn add(&mut self, device: Device) {
@@ -140,7 +136,13 @@ impl DeviceManager {
     pub fn get_all_devices_except_self(&self) -> Vec<&Device> {
         self.devices
             .values()
-            .filter(|device| !device.is_self_register())
+            .filter(|device| {
+                if let Some(self_device) = &self.self_device {
+                    device.id != *self_device
+                } else {
+                    true
+                }
+            })
             .collect()
     }
 
