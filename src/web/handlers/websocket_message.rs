@@ -220,7 +220,7 @@ impl WebSocketMessageHandler {
 
             let client = client.0.read().await;
             match client.send_raw(message).await {
-                Ok(_) => {},
+                Ok(_) => {}
                 Err(e) => {
                     error!("Failed to send message to client {}: {}", id, e);
                     errors.push((id.clone(), e));
@@ -231,7 +231,10 @@ impl WebSocketMessageHandler {
         if errors.is_empty() {
             Ok(())
         } else {
-            Err(anyhow::anyhow!("Failed to send message to some clients: {:?}", errors))
+            Err(anyhow::anyhow!(
+                "Failed to send message to some clients: {:?}",
+                errors
+            ))
         }
     }
 
@@ -252,7 +255,9 @@ impl WebSocketMessageHandler {
                             continue;
                         }
                     };
-                    self_clone.handle_message(message, MessageSource::DeviceId(device_id)).await;
+                    self_clone
+                        .handle_message(message, MessageSource::DeviceId(device_id))
+                        .await;
                 }
             }
         });
@@ -277,7 +282,10 @@ impl WebSocketMessageHandler {
         if errors.is_empty() {
             Ok(())
         } else {
-            Err(anyhow::anyhow!("Failed to send message to some clients: {:?}", errors))
+            Err(anyhow::anyhow!(
+                "Failed to send message to some clients: {:?}",
+                errors
+            ))
         }
     }
 
@@ -354,7 +362,11 @@ impl WebSocketMessageHandler {
         }
     }
 
-    pub async fn handle_clipboard_sync(&self, data: ClipboardSyncMessage, message_source: MessageSource) {
+    pub async fn handle_clipboard_sync(
+        &self,
+        data: ClipboardSyncMessage,
+        message_source: MessageSource,
+    ) {
         {
             let tx = self.clipboard_message_sync_sender.lock().await;
             match tx.send(data.clone()).await {
@@ -370,10 +382,7 @@ impl WebSocketMessageHandler {
 
         // 排除同步消息的来源，否则将导致死循环
         let _ = self
-            .broadcast(
-                &WebSocketMessage::ClipboardSync(data),
-                &Some(excludes),
-            )
+            .broadcast(&WebSocketMessage::ClipboardSync(data), &Some(excludes))
             .await;
         info!("Broadcasted clipboard sync to others");
     }
@@ -462,13 +471,14 @@ impl WebSocketMessageHandler {
     // }
 }
 
-
-
 #[cfg(test)]
 mod tests {
+    use serial_test::serial;
+
     use super::*;
 
     #[tokio::test]
+    #[serial]
     async fn test_register_and_unregister() {
         let handler = WebSocketMessageHandler::new();
         let device = Device::new(
@@ -492,6 +502,49 @@ mod tests {
         if let Ok(guard) = guard {
             let devices = guard.get_all_devices();
             assert_eq!(devices.len(), 0);
+        } else {
+            assert!(false);
+        }
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn test_handle_device_list_sync() {
+        let handler = WebSocketMessageHandler::new();
+        let device1 = Device::new(
+            "device1".to_string(),
+            Some("127.0.0.1".to_string()),
+            Some(8080),
+            Some(8080),
+        );
+        let device2 = Device::new(
+            "device2".to_string(),
+            Some("127.0.0.1".to_string()),
+            Some(8080),
+            Some(8080),
+        );
+        let device3 = Device::new(
+            "device3".to_string(),
+            Some("127.0.0.1".to_string()),
+            Some(8080),
+            Some(8080),
+        );
+
+        handler
+            .handle_device_list_sync(
+                DeviceListData {
+                    devices: vec![device1, device2, device3],
+                    replay_device_ids: vec![],
+                },
+                MessageSource::DeviceId("device1".to_string()),
+            )
+            .await;
+
+        let device_manager = get_device_manager();
+        let guard = device_manager.try_lock();
+        if let Ok(guard) = guard {
+            let devices = guard.get_all_devices();
+            assert_eq!(devices.len(), 3);
         } else {
             assert!(false);
         }
