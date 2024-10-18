@@ -43,11 +43,9 @@ impl WebSocketHandler {
             self.message_handler
                 .add_incoming_connection(client_id.clone(), client_sender)
                 .await;
-            info!(
-                "Client {} connected, current clients: {}",
-                client_id,
-                self.message_handler.count_incoming_connections().await
-            );
+
+            let count = self.message_handler.count_incoming_connections().await;
+            info!("Client {} connected, current clients: {}", client_id, count);
         }
 
         tokio::task::spawn(client_rcv.forward(server_ws_sender).map(|result| {

@@ -55,6 +55,8 @@ async fn test_websocket_run() {
     let mut client = WebSocketClient::new("ws://127.0.0.1:8333/ws".parse().unwrap());
     client.connect().await.unwrap();
     client.disconnect().await.unwrap();
+    // 延迟一段时间，让 server 调用设备下线的方法
+    tokio::time::sleep(Duration::from_secs(1)).await;
     w.webserver.shutdown().await.unwrap();
 }
 
@@ -203,6 +205,8 @@ async fn test_websocket_subscribe() {
     }
 
     client1.disconnect().await.unwrap();
+    // 延迟一段时间，让 server 调用设备下线的方法
+    tokio::time::sleep(Duration::from_secs(1)).await;
     w.webserver.shutdown().await.unwrap();
 }
 

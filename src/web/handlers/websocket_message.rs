@@ -90,6 +90,7 @@ impl WebSocketMessageHandler {
 
     pub async fn disconnect_incoming_connection(&self, id: String, addr: Option<SocketAddr>) {
         self.remove_incoming_connection(id.clone()).await;
+        println!("disconnect_incoming_connection: {}", id);
         match addr {
             Some(addr) => {
                 let _ = self.device_offline_sender.lock().await.send(addr).await;
@@ -436,4 +437,40 @@ impl WebSocketMessageHandler {
     //         }
     //     }
     // }
+}
+
+
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn test_register_and_unregister() {
+        let handler = WebSocketMessageHandler::new();
+        let device = Device::new(
+            "device1".to_string(),
+            Some("127.0.0.1".to_string()),
+            Some(8080),
+            Some(8080),
+        );
+        handler.handle_register(device).await;
+
+        let device_manager = get_device_manager();
+        let guard = device_manager.try_lock();
+        if let Ok(guard) = guard {
+            let devices = guard.get_all_devices();
+            assert_eq!(devices.len(), 1);
+        } else {
+            assert!(false);
+        }
+        handler.handle_unregister("device1".to_string()).await;
+        let guard = device_manager.try_lock();
+        if let Ok(guard) = guard {
+            let devices = guard.get_all_devices();
+            assert_eq!(devices.len(), 0);
+        } else {
+            assert!(false);
+        }
+    }
 }
