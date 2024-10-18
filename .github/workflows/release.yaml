@@ -274,8 +274,21 @@ jobs:
           echo "Contents of the artifacts directory:"
           ls -R artifacts/
 
-      - name: Run GoReleaser
+      - name: Run GoReleaser(snapshot)
         uses: goreleaser/goreleaser-action@v5
+        if: ${{ github.event.inputs.test-workflow == 'true' }}
+        with:
+          distribution: goreleaser
+          version: latest
+          # 如果是测试发布流程，则发布快照
+          args: release --skip=validate --debug --config .goreleaser.yml --snapshot
+        env:
+          GITHUB_TOKEN: ${{ secrets.GH_TOKEN_RUST_CROSS }}
+          PRE_RELEASE: ${{ github.event.inputs.prerelease }}
+
+      - name: Run GoReleaser(release)
+        uses: goreleaser/goreleaser-action@v5
+        if: ${{ github.event.inputs.test-workflow == 'false' }}
         with:
           distribution: goreleaser
           version: latest
@@ -336,8 +349,21 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v4
 
-      - name: Run GoReleaser for Windows
+      - name: Run GoReleaser for Windows(snapshot)
         uses: goreleaser/goreleaser-action@v5
+        if: ${{ github.event.inputs.test-workflow == 'true' }}
+        with:
+          distribution: goreleaser
+          version: latest
+          args: release --config .goreleaser-win.yml --skip=validate --debug --snapshot
+        env:
+          GITHUB_TOKEN: ${{ secrets.GH_TOKEN_RUST_CROSS }}
+          CHOCOLATEY_API_KEY: ${{ secrets.CHOCOLATEY_API_KEY }}
+          ARTIFACT_NAME: uniclipboard_${{ env.RELEASE_VERSION }}_windows_amd64.exe
+
+      - name: Run GoReleaser for Windows(release)
+        uses: goreleaser/goreleaser-action@v5
+        if: ${{ github.event.inputs.test-workflow == 'false' }}
         with:
           distribution: goreleaser
           version: latest
@@ -345,7 +371,6 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GH_TOKEN_RUST_CROSS }}
           CHOCOLATEY_API_KEY: ${{ secrets.CHOCOLATEY_API_KEY }}
-          ARTIFACT_NAME: uniclipboard_${{ env.RELEASE_VERSION }}_windows_amd64.exe
 
       - name: Debug Artifacts and Dist (After)
         run: |
