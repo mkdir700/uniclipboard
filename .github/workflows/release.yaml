@@ -242,6 +242,10 @@ jobs:
           echo 'deb [trusted=yes] https://repo.goreleaser.com/apt/ /' | sudo tee /etc/apt/sources.list.d/goreleaser.list
           sudo apt update
           sudo apt install nfpm
+      
+      - name: Install Snapcraft
+        run: |
+          sudo apt-get install -y snapcraft
 
       # Download all artifacts
       - name: Download artifacts
@@ -379,3 +383,10 @@ jobs:
           echo "Contents of dist directory:"
           Get-ChildItem -Recurse dist
         shell: powershell
+
+      - name: Store nupkg
+        uses: actions/upload-artifact@v4
+        with:
+          name: uniclipboard-${{ env.RELEASE_VERSION }}-nupkg
+          path: dist/*.nupkg
+          retention-days: 1

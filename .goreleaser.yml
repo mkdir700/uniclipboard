@@ -45,7 +45,7 @@ snapcrafts:
     grade: stable
     confinement: strict
     license: Apache-2.0
-    base: bare
+    base: core18
     apps:
       uniclipboard:
         command: uniclipboard
