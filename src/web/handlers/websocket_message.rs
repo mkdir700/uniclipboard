@@ -421,15 +421,14 @@ impl WebSocketMessageHandler {
             }
         }
 
-        let excludes = match message_source {
-            MessageSource::IpPort(addr) => vec![format!("{}:{}", addr.ip(), addr.port())],
-            MessageSource::DeviceId(device_id) => vec![device_id],
-        };
+        // let excludes = match message_source {
+        //     MessageSource::IpPort(addr) => vec![format!("{}:{}", addr.ip(), addr.port())],
+        //     MessageSource::DeviceId(device_id) => vec![device_id],
+        // };
 
-        // 排除同步消息的来源，否则将导致死循环
-        let _ = self
-            .broadcast(&WebSocketMessage::ClipboardSync(data), &Some(excludes))
-            .await;
+        // let _ = self
+        //     .broadcast(&WebSocketMessage::ClipboardSync(data), &Some(excludes))
+        //     .await;
         info!("Broadcasted clipboard sync to others");
     }
 
