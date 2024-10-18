@@ -468,17 +468,17 @@ impl WebSocketMessageHandler {
         }
 
         data.replay_device_ids.push(device_id.clone());
-        let excludes1 = data.replay_device_ids.clone();
+        let excludes = data.replay_device_ids.clone();
 
-        let excludes2 = match message_source {
-            MessageSource::IpPort(addr) => vec![format!("{}:{}", addr.ip(), addr.port())],
-            MessageSource::DeviceId(device_id) => vec![device_id],
-        };
+        // let excludes2 = match message_source {
+        //     MessageSource::IpPort(addr) => vec![format!("{}:{}", addr.ip(), addr.port())],
+        //     MessageSource::DeviceId(device_id) => vec![device_id],
+        // };
 
         // 合并 excludes1 和 excludes2
-        let excludes = excludes1.into_iter().chain(excludes2.into_iter()).collect();
+        // let excludes = excludes1.into_iter().chain(excludes2.into_iter()).collect();
 
-        info!("Broadcasting device list sync to others");
+        info!("Broadcasting device list sync to others, excludes: {:?}", excludes);
         // 广播给其他设备，用于他们更新设备列表
         let _ = self
             .broadcast(&WebSocketMessage::DeviceListSync(data), &Some(excludes))
