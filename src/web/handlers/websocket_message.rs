@@ -440,6 +440,7 @@ impl WebSocketMessageHandler {
         message_source: MessageSource,
     ) {
         // 合并设备列表并返回新增的设备
+        let _ = message_source;
         let _ = {
             let device_manager = get_device_manager();
             device_manager
@@ -470,18 +471,36 @@ impl WebSocketMessageHandler {
         data.replay_device_ids.push(device_id.clone());
         let excludes = data.replay_device_ids.clone();
 
-        // let excludes2 = match message_source {
-        //     MessageSource::IpPort(addr) => vec![format!("{}:{}", addr.ip(), addr.port())],
-        //     MessageSource::DeviceId(device_id) => vec![device_id],
-        // };
+        let devices = {
+            match get_device_manager()
+                .lock()
+                .map_err(|_| anyhow::anyhow!("Failed to lock device manager"))
+            {
+                Ok(device_manager) => device_manager
+                    .get_all_devices()
+                    .into_iter()
+                    .cloned()
+                    .collect::<Vec<_>>(),
+                Err(e) => {
+                    error!("Failed to lock device manager: {}", e);
+                    return;
+                }
+            }
+        };
 
-        // 合并 excludes1 和 excludes2
-        // let excludes = excludes1.into_iter().chain(excludes2.into_iter()).collect();
-
-        info!("Broadcasting device list sync to others, excludes: {:?}", excludes);
+        info!(
+            "Broadcasting device list sync to others, excludes: {:?}",
+            excludes
+        );
         // 广播给其他设备，用于他们更新设备列表
         let _ = self
-            .broadcast(&WebSocketMessage::DeviceListSync(data), &Some(excludes))
+            .broadcast(
+                &WebSocketMessage::DeviceListSync(DeviceListData {
+                    devices,
+                    replay_device_ids: data.replay_device_ids,
+                }),
+                &Some(excludes),
+            )
             .await;
     }
 
