@@ -92,6 +92,7 @@ impl WebSocketSync {
         client.connect().await?;
         *self.peer_device_connected.write().await = Some(true);
         client.register(None).await?;
+        client.sync_device_list().await?;
         self.websocket_message_handler
             .add_outgoing_connection(format!("{}:{}", peer_device_addr, peer_device_port), client)
             .await;
