@@ -26,7 +26,7 @@ nfpms:
     vendor: mkdir700
     homepage: https://github.com/mkdir700/uniclipboard
     maintainer: mkdir700 <mkdir700@gmail.com>
-    description: A clipboard sharing tool designed to create a seamless clipboard experience
+    description: A cross-platform clipboard sharing tool designed to create a seamless clipboard experience
     license: Apache-2.0
     formats:
       - deb
