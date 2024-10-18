@@ -66,6 +66,7 @@ rayon = "1.10.0"
 png = "0.17.14"
 warp = "0.3.7"
 tokio-stream = "0.1.16"
+local-ip-address = "0.6.3"
 
 [target.'cfg(windows)'.dependencies]
 clipboard-win = { version = "5.4.0" }

@@ -1,13 +1,13 @@
+use crate::device::Device;
+use anyhow::Result;
 use base64::Engine;
 use bytes::Bytes;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use serde_json;
-use tokio_tungstenite::tungstenite::Message;
 use std::fmt;
+use tokio_tungstenite::tungstenite::Message;
 use twox_hash::xxh3::hash64;
-use anyhow::Result;
-use crate::device::Device;
 
 // pub enum FileType {
 //     Text,
@@ -238,13 +238,29 @@ impl PartialEq for Payload {
 
 impl Eq for Payload {}
 
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct RegisterDeviceMessage {
+    pub id: String,
+    pub ip: Option<String>,
+    pub server_port: Option<u16>,
+}
+
+impl RegisterDeviceMessage {
+    pub fn new(id: String, ip: Option<String>, server_port: Option<u16>) -> Self {
+        Self {
+            id,
+            ip,
+            server_port,
+        }
+    }
+}
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(tag = "type", content = "data")]
 pub enum WebSocketMessage {
     ClipboardSync(ClipboardSyncMessage),
     DeviceListSync(DeviceListData),
-    Register(Device),
+    Register(RegisterDeviceMessage),
     Unregister(String),
 }
 
