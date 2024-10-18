@@ -90,6 +90,9 @@ impl DeviceManager {
                 new_devices.push(device.clone());
             }
         }
+        for device in &new_devices {
+            self.add(device.clone());
+        }
         new_devices
     }
 
