@@ -208,18 +208,31 @@ impl WebSocketMessageHandler {
         message: &WebSocketMessage,
         excludes: &Option<Vec<String>>,
     ) -> Result<()> {
-        let mut clients = self.outgoing_connections.write().await;
-        for (id, client) in clients.iter_mut() {
-            let client = client.0.read().await;
-            if let Some(exclude_ids) = &excludes {
-                if !exclude_ids.contains(&id) {
-                    client.send_raw(message).await?;
+        let clients = self.outgoing_connections.read().await;
+        let mut errors = Vec::new();
+
+        for (id, client) in clients.iter() {
+            if let Some(exclude_ids) = excludes {
+                if exclude_ids.contains(id) {
+                    continue;
                 }
-            } else {
-                client.send_raw(message).await?;
+            }
+
+            let client = client.0.read().await;
+            match client.send_raw(message).await {
+                Ok(_) => {},
+                Err(e) => {
+                    error!("Failed to send message to client {}: {}", id, e);
+                    errors.push((id.clone(), e));
+                }
             }
         }
-        Ok(())
+
+        if errors.is_empty() {
+            Ok(())
+        } else {
+            Err(anyhow::anyhow!("Failed to send message to some clients: {:?}", errors))
+        }
     }
 
     /// 开启一个异步任务，从 outgoing_connections 中接收消息并处理
@@ -253,9 +266,19 @@ impl WebSocketMessageHandler {
         message: &WebSocketMessage,
         excludes: &Option<Vec<String>>,
     ) -> Result<()> {
-        self.broadcast_to_outgoing(message, excludes).await?;
-        self.broadcast_to_incoming(message, excludes).await?;
-        Ok(())
+        let mut errors: Vec<anyhow::Error> = Vec::new();
+
+        if let Err(e) = self.broadcast_to_outgoing(message, excludes).await {
+            errors.push(e);
+        }
+        if let Err(e) = self.broadcast_to_incoming(message, excludes).await {
+            errors.push(e);
+        }
+        if errors.is_empty() {
+            Ok(())
+        } else {
+            Err(anyhow::anyhow!("Failed to send message to some clients: {:?}", errors))
+        }
     }
 
     pub async fn handle_message(&self, msg: Message, message_source: MessageSource) {
