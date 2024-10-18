@@ -107,7 +107,7 @@ impl WebSocketSync {
             while let Ok(device) = new_devices_rx.recv().await {
                 // 如果 device 是对等设备则不进行连接
                 let ip = device.ip.as_ref().unwrap();
-                let port = device.port.as_ref().unwrap();
+                let port = device.server_port.as_ref().unwrap();
                 if ip == peer_device_addr.as_str() && *port == peer_device_port {
                     continue;
                 }
