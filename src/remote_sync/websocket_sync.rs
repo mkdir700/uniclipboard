@@ -60,6 +60,8 @@ impl WebSocketSync {
         client.register(None).await?;
         client.sync_device_list().await?;
 
+        info!("Connected to device: {}", device);
+
         let message_handler = self.websocket_message_handler.clone();
         message_handler
             .add_outgoing_connection(

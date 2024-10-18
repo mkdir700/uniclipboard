@@ -255,6 +255,7 @@ impl WebSocketMessageHandler {
                             continue;
                         }
                     };
+                    debug!("Received message from WebSocket: {:?}", message);
                     self_clone
                         .handle_message(message, MessageSource::DeviceId(device_id))
                         .await;
