@@ -1,6 +1,7 @@
 use crate::config::CONFIG;
 use crate::device::get_device_manager;
 use crate::device::Device;
+use crate::message::ClipboardSyncMessage;
 use crate::message::DeviceListData;
 use crate::message::WebSocketMessage;
 use anyhow::Result;
@@ -11,6 +12,7 @@ use log::info;
 use log::warn;
 use std::sync::Arc;
 use tokio::net::TcpStream;
+use tokio::sync::broadcast;
 use tokio::sync::Mutex;
 use tokio_tungstenite::connect_async;
 use tokio_tungstenite::tungstenite::http::Uri;
@@ -35,15 +37,60 @@ pub struct WebSocketClient {
             Mutex<futures_util::stream::SplitStream<WebSocketStream<MaybeTlsStream<TcpStream>>>>,
         >,
     >,
+    message_tx: Arc<broadcast::Sender<WebSocketMessage>>,
+    message_join_handle: Option<tokio::task::JoinHandle<()>>,
 }
 
 impl WebSocketClient {
     pub fn new(uri: Uri) -> Self {
+        let (tx, _) = broadcast::channel(100);
         WebSocketClient {
             uri,
             writer: Arc::new(None),
             reader: Arc::new(None),
+            message_tx: Arc::new(tx),
+            message_join_handle: None,
         }
+    }
+
+    pub async fn start_message_handler(&mut self) {
+        let reader = self.reader.clone();
+        let message_tx = self.message_tx.clone();
+
+        self.message_join_handle = Some(tokio::spawn(async move {
+            loop {
+                if let Some(reader) = reader.as_ref() {
+                    let mut reader = reader.lock().await;
+                    match reader.next().await {
+                        Some(Ok(msg)) => {
+                            if let Ok(websocket_msg) =
+                                serde_json::from_str(&msg.to_text().unwrap_or_default())
+                            {
+                                let _ = message_tx.send(websocket_msg);
+                            }
+                        }
+                        Some(Err(e)) => {
+                            // TODO: 如果意外断开连接该如何处理？
+                            // 1. 尝试重连
+                            // 2. 发送消息通知上层
+                            error!("WebSocket error: {}", e);
+                            break;
+                        }
+                        None => {
+                            error!("WebSocket connection closed");
+                            break;
+                        }
+                    }
+                } else {
+                    error!("WebSocket reader not available");
+                    break;
+                }
+            }
+        }));
+    }
+
+    pub fn subscribe(&self) -> broadcast::Receiver<WebSocketMessage> {
+        self.message_tx.subscribe()
     }
 
     /// 发送剪贴板同步消息
@@ -51,8 +98,7 @@ impl WebSocketClient {
     pub async fn send_clipboard_sync(&mut self, message: &WebSocketMessage) -> Result<()> {
         let mut retries = 0;
         while retries < 3 {
-            let message_str = serde_json::to_string(message)?;
-            if let Err(e) = self.send_raw(Message::Text(message_str)).await {
+            if let Err(e) = self.send_raw(message).await {
                 retries += 1;
                 error!("Failed to send message, retrying... {}", e);
                 // 捕获 IO error: Broken pipe(os error 32)
@@ -71,7 +117,17 @@ impl WebSocketClient {
         Err(anyhow::anyhow!("Failed to send message after 3 retries"))
     }
 
-    pub async fn send_raw(&self, message: Message) -> Result<()> {
+    /// 接收剪贴板同步消息
+    pub async fn receive_clipboard_sync(&self) -> Result<Option<ClipboardSyncMessage>> {
+        let message = self.subscribe().recv().await?;
+        if let WebSocketMessage::ClipboardSync(data) = message {
+            return Ok(Some(data));
+        }
+        Ok(None)
+    }
+
+    pub async fn send_raw(&self, message: &WebSocketMessage) -> Result<()> {
+        let message = message.to_tungstenite_message();
         let mut writer = if let Some(writer) = self.writer.as_ref() {
             writer.lock().await
         } else {
@@ -83,21 +139,9 @@ impl WebSocketClient {
         Ok(())
     }
 
-    #[allow(dead_code)]
-    pub async fn receive_raw(&self) -> Result<Message> {
-        let mut reader = if let Some(reader) = self.reader.as_ref() {
-            reader.lock().await
-        } else {
-            return Err(anyhow::anyhow!(
-                "WebSocket error: Not connected, please connect first"
-            ));
-        };
-
-        match reader.next().await {
-            Some(Ok(msg)) => Ok(msg),
-            Some(Err(e)) => Err(anyhow::anyhow!("WebSocket error: {}", e)),
-            None => Err(anyhow::anyhow!("WebSocket error: Connection closed")),
-        }
+    pub async fn receive_raw(&self) -> Result<WebSocketMessage> {
+        let message = self.subscribe().recv().await?;
+        Ok(message)
     }
 
     /// 重新连接到服务器
@@ -128,6 +172,8 @@ impl WebSocketClient {
             self.reader = Arc::new(Some(Mutex::new(reader)));
         }
 
+        self.start_message_handler().await;
+
         Ok(())
     }
 
@@ -150,6 +196,10 @@ impl WebSocketClient {
         // 现在可以安全地修改 self.writer 和 self.reader
         self.writer = Arc::new(None);
         self.reader = Arc::new(None);
+        if let Some(handle) = self.message_join_handle.take() {
+            handle.abort();
+        }
+        self.message_join_handle = None;
         Ok(())
     }
 
@@ -164,8 +214,7 @@ impl WebSocketClient {
             Device::new(device_id, None, None, server_port)
         });
 
-        let web_socket_message =
-            WebSocketMessage::Register(device);
+        let web_socket_message = WebSocketMessage::Register(device);
         let message = serde_json::to_string(&web_socket_message)?;
         let mut writer = if let Some(writer) = self.writer.as_ref() {
             writer.lock().await
@@ -194,8 +243,7 @@ impl WebSocketClient {
             devices,
             replay_device_ids: vec![device_id],
         });
-        let text = serde_json::to_string(&web_socket_message)?;
-        self.send_raw(Message::Text(text)).await?;
+        self.send_raw(&web_socket_message).await?;
         Ok(())
     }
 
