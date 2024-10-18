@@ -171,7 +171,9 @@ impl ClipboardContextTrait for ClipboardContextWrapper {
     #[cfg(target_os = "windows")]
     fn set_image(&self, image: RustImageData) -> Result<()> {
         use super::utils::PlatformImage;
-        use clipboard_win::{formats, set_clipboard};
+        use clipboard_win::{empty, formats, set_clipboard};
+        use std::ptr::null_mut;
+        use winapi::um::winuser::{CloseClipboard, GetOpenClipboardWindow, OpenClipboard};
 
         let platform_image = PlatformImage::new(
             image
@@ -179,10 +181,48 @@ impl ClipboardContextTrait for ClipboardContextWrapper {
                 .map_err(|e| anyhow::anyhow!("Failed to get dynamic image: {}", e))?,
         );
         let bmp_bytes = platform_image.to_bitmap();
-        match set_clipboard(formats::Bitmap, &bmp_bytes) {
-            Ok(_) => Ok(()),
-            Err(e) => Err(anyhow::anyhow!("Failed to write image: {}", e)),
+
+        // 尝试打开剪贴板
+        let mut retry_count = 0;
+        while retry_count < 5 {
+            unsafe {
+                if OpenClipboard(null_mut()) != 0 {
+                    // 剪贴板成功打开
+                    break;
+                }
+                // 如果剪贴板已经被其他进程打开，等待一段时间后重试
+                if GetOpenClipboardWindow() != null_mut() {
+                    std::thread::sleep(std::time::Duration::from_millis(10));
+                    retry_count += 1;
+                } else {
+                    // 如果剪贴板没有被其他进程打开但仍然失败，返回错误
+                    return Err(anyhow::anyhow!("Failed to open clipboard"));
+                }
+            }
         }
+
+        if retry_count == 5 {
+            return Err(anyhow::anyhow!(
+                "Failed to open clipboard after multiple attempts"
+            ));
+        }
+
+        // 清空剪贴板
+        let clear_result = empty();
+
+        // 设置新的剪贴板内容
+        let set_result = set_clipboard(formats::Bitmap, &bmp_bytes);
+
+        // 关闭剪贴板
+        unsafe {
+            CloseClipboard();
+        }
+
+        // 检查操作结果
+        clear_result.map_err(|e| anyhow::anyhow!("Failed to clear clipboard: {}", e))?;
+        set_result.map_err(|e| anyhow::anyhow!("Failed to set clipboard: {}", e))?;
+
+        Ok(())
     }
 }
 
