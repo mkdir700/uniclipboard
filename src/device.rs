@@ -15,7 +15,6 @@ pub struct Device {
 
 pub struct DeviceManager {
     devices: HashMap<String, Device>,
-    online_devices: HashSet<String>,
 }
 
 pub static GLOBAL_DEVICE_MANAGER: Lazy<Mutex<DeviceManager>> =
@@ -65,7 +64,6 @@ impl DeviceManager {
     pub fn new() -> Self {
         Self {
             devices: HashMap::new(),
-            online_devices: HashSet::new(),
         }
     }
 
