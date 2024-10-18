@@ -111,6 +111,15 @@ impl WebSocketSync {
                 let ip = device.ip.as_ref().unwrap();
                 let port = device.server_port.as_ref().unwrap();
                 if ip == peer_device_addr.as_str() && *port == peer_device_port {
+                    info!("Peer device already connected: {}, skip...", device);
+                    continue;
+                }
+                // 连接设备前，检查两个设备是否已经连接
+                // 1. 检查 outgoning 列表中是否存在相同的 device_id
+                // 2. 检查 incoming 列表中是否存在相同的 ip + port
+                let is_connected = self_clone.websocket_message_handler.is_connected(&device).await;
+                if is_connected {
+                    info!("Device {} is already connected, skip...", device);
                     continue;
                 }
                 match self_clone.connect_device(&device).await {

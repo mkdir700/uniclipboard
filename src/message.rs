@@ -239,13 +239,13 @@ impl PartialEq for Payload {
 impl Eq for Payload {}
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct RegisterMessage {
+pub struct RegisterDeviceMessage {
     pub id: String,
     pub ip: Option<String>,
     pub server_port: Option<u16>,
 }
 
-impl RegisterMessage {
+impl RegisterDeviceMessage {
     pub fn new(id: String, ip: Option<String>, server_port: Option<u16>) -> Self {
         Self {
             id,
@@ -260,7 +260,7 @@ impl RegisterMessage {
 pub enum WebSocketMessage {
     ClipboardSync(ClipboardSyncMessage),
     DeviceListSync(DeviceListData),
-    Register(RegisterMessage),
+    Register(RegisterDeviceMessage),
     Unregister(String),
 }
 

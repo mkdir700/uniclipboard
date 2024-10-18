@@ -3,7 +3,7 @@ use crate::device::get_device_manager;
 use crate::device::Device;
 use crate::message::ClipboardSyncMessage;
 use crate::message::DeviceListData;
-use crate::message::RegisterMessage;
+use crate::message::RegisterDeviceMessage;
 use crate::message::WebSocketMessage;
 use anyhow::Result;
 use futures::StreamExt;
@@ -215,7 +215,7 @@ impl WebSocketClient {
             Device::new(device_id, None, None, server_port)
         });
 
-        let web_socket_message = WebSocketMessage::Register(RegisterMessage::new(
+        let web_socket_message = WebSocketMessage::Register(RegisterDeviceMessage::new(
             device.id,
             device.ip,
             device.server_port,

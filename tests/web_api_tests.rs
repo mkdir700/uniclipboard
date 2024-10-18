@@ -2,12 +2,12 @@ use bytes::Bytes;
 use chrono::Utc;
 use reqwest_dav::re_exports::reqwest::{self, StatusCode};
 use serial_test::serial;
-use std::{net::SocketAddr, sync::Arc, time::Duration};
+use std::{net::{IpAddr, Ipv4Addr, SocketAddr}, sync::Arc, time::Duration};
 use tokio::{self, time::timeout};
 
 use uniclipboard::{
     device::Device,
-    message::{ClipboardSyncMessage, DeviceListData, Payload, WebSocketMessage},
+    message::{ClipboardSyncMessage, DeviceListData, Payload, RegisterDeviceMessage, WebSocketMessage},
     network::WebSocketClient,
     web::{handlers::websocket_message::MessageSource, WebServer},
     Config, WebSocketHandler, WebSocketMessageHandler, CONFIG,
@@ -89,7 +89,20 @@ async fn test_get_device_list() {
     //     replay_device_ids: vec![],
     // };
     w.websocket_message_handler
-        .handle_register(device)
+        .handle_register(
+            RegisterDeviceMessage::new("device1".to_string(), Some("127.0.0.1".to_string()), Some(8114)),
+            SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 8114),
+        )
+        .await;
+
+    w.websocket_message_handler
+        .handle_device_list_sync(
+            DeviceListData {
+                devices: vec![device],
+                replay_device_ids: vec![],
+            },
+            MessageSource::IpPort(SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 8114)),
+        )
         .await;
 
     // 再次运行

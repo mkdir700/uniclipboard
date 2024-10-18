@@ -5,6 +5,7 @@ use std::sync::Arc;
 use crate::config::CONFIG;
 use crate::device::get_device_manager;
 use crate::device::Device;
+use crate::message::RegisterDeviceMessage;
 use crate::message::{ClipboardSyncMessage, DeviceListData, WebSocketMessage};
 use anyhow::Result;
 use futures::future::join_all;
@@ -15,8 +16,11 @@ use tokio::sync::RwLock;
 use tokio::sync::{broadcast, mpsc, Mutex};
 use warp::ws::Message;
 
-use super::websocket::Clients;
 use crate::network::WebSocketClient;
+
+type DeviceId = String;
+type IpPort = String;
+pub type Clients = HashMap<IpPort, mpsc::UnboundedSender<Result<Message, warp::Error>>>;
 
 pub enum MessageSource {
     IpPort(SocketAddr),
@@ -37,7 +41,7 @@ pub struct WebSocketMessageHandler {
     outgoing_connections: Arc<
         RwLock<
             HashMap<
-                String,
+                DeviceId,
                 (
                     Arc<RwLock<WebSocketClient>>,
                     broadcast::Receiver<WebSocketMessage>,
@@ -48,6 +52,8 @@ pub struct WebSocketMessageHandler {
     >,
     outgoing_connections_message_tx: Arc<Mutex<mpsc::Sender<(String, WebSocketMessage)>>>,
     outgoing_connections_message_rx: Arc<Mutex<mpsc::Receiver<(String, WebSocketMessage)>>>,
+    // 连接到本设备的设备，device_id -> ip:port
+    device_ip_port_map: Arc<Mutex<HashMap<DeviceId, IpPort>>>,
 }
 
 impl WebSocketMessageHandler {
@@ -67,6 +73,7 @@ impl WebSocketMessageHandler {
             outgoing_connections: Arc::new(RwLock::new(HashMap::new())),
             outgoing_connections_message_tx: Arc::new(Mutex::new(outgoing_connections_message_tx)),
             outgoing_connections_message_rx: Arc::new(Mutex::new(outgoing_connections_message_rx)),
+            device_ip_port_map: Arc::new(Mutex::new(HashMap::new())),
         }
     }
 
@@ -265,6 +272,24 @@ impl WebSocketMessageHandler {
 }
 
 impl WebSocketMessageHandler {
+    pub async fn is_connected(&self, device: &Device) -> bool {
+        let device_id = device.id.clone();
+        let ip_port = format!(
+            "{}:{}",
+            device.ip.as_ref().unwrap_or(&"".to_string()),
+            device.port.as_ref().unwrap_or(&0)
+        );
+        self.outgoing_connections
+            .read()
+            .await
+            .contains_key(&device_id)
+            || self
+                .incoming_connections
+                .read()
+                .await
+                .contains_key(&ip_port)
+    }
+
     /// 向本设备连接到的设备发送消息，以及向连接到本设备的设备发送消息
     pub async fn broadcast(
         &self,
@@ -300,26 +325,37 @@ impl WebSocketMessageHandler {
                         WebSocketMessage::ClipboardSync(data) => {
                             self.handle_clipboard_sync(data, message_source).await;
                         }
-                        WebSocketMessage::DeviceListSync(data) => {
+                        WebSocketMessage::DeviceListSync(mut data) => {
+                            // 如果消息来源是其他设备连接到本设备，因为只有在建立 websocket 时，才会得知对方的端口号
+                            // 所以此时需要对该设备的端口号进行更新
+                            if let MessageSource::IpPort(addr) = message_source {
+                                for device in &mut data.devices {
+                                    if self
+                                        .device_ip_port_map
+                                        .lock()
+                                        .await
+                                        .get(&device.id)
+                                        .unwrap_or(&"".to_string())
+                                        == &format!("{}:{}", addr.ip(), addr.port())
+                                    {
+                                        device.port = Some(addr.port());
+                                        info!(
+                                            "Update device {} port to {}",
+                                            device.id,
+                                            addr.port()
+                                        );
+                                        break;
+                                    }
+                                }
+                            }
                             self.handle_device_list_sync(data, message_source).await;
                         }
                         WebSocketMessage::Register(register_device_message) => {
-                            let device = match message_source {
-                                MessageSource::IpPort(addr) => {
-                                    Device::new(
-                                        register_device_message.id,
-                                        Some(addr.ip().to_string()),
-                                        Some(addr.port()),
-                                        register_device_message.server_port,
-                                    )
-                                }
-                                MessageSource::DeviceId(device_id) => {
-                                    // 这种情况应该不会发生，除非是重复注册
-                                    error!("Device {} is already registered", device_id);
-                                    return;
-                                }
-                            };
-                            self.handle_register(device).await;
+                            if let MessageSource::IpPort(addr) = message_source {
+                                self.handle_register(register_device_message, addr).await;
+                            } else {
+                                error!("Register message source is not IpPort");
+                            }
                         }
                         WebSocketMessage::Unregister(device_id) => {
                             self.handle_unregister(device_id).await;
@@ -343,41 +379,19 @@ impl WebSocketMessageHandler {
         }
     }
 
-    pub async fn handle_register(&self, device: Device) {
-        let device_manager = get_device_manager();
-        {
-            let mutex = device_manager.lock();
-            if let Ok(mut device_manager) = mutex {
-                device_manager.add(device.clone());
-            } else {
-                error!("Failed to lock device manager");
-            }
-        }
-        // 广播设备列表
-        let device_list: Vec<Device> = {
-            let device_manager = get_device_manager();
-            device_manager
-                .lock()
-                .unwrap()
-                .get_all_devices()
-                .into_iter()
-                .map(|device| device.clone())
-                .collect()
-        };
-
-        let device_id = {
-            let config = CONFIG.read().unwrap();
-            config.device_id.clone()
-        };
-
-        let message = WebSocketMessage::DeviceListSync(DeviceListData {
-            devices: device_list,
-            replay_device_ids: vec![device_id.clone()],
-        });
-        let _ = self
-            .broadcast(&message, &Some(vec![device_id.clone()]))
-            .await;
-        // let _ = self.device_online_sender.lock().await.send(device).await;
+    /// 注册设备
+    // 更新 device_ip_port_map
+    pub async fn handle_register(
+        &self,
+        register_device_message: RegisterDeviceMessage,
+        addr: SocketAddr,
+    ) {
+        let device_id = register_device_message.id.clone();
+        let ip_port = format!("{}:{}", addr.ip(), addr.port());
+        self.device_ip_port_map
+            .lock()
+            .await
+            .insert(device_id, ip_port);
     }
 
     pub async fn handle_unregister(&self, device_id: String) {
@@ -504,39 +518,11 @@ impl WebSocketMessageHandler {
 
 #[cfg(test)]
 mod tests {
+    use std::net::{IpAddr, Ipv4Addr};
+
     use serial_test::serial;
 
     use super::*;
-
-    #[tokio::test]
-    #[serial]
-    async fn test_register_and_unregister() {
-        let handler = WebSocketMessageHandler::new();
-        let device = Device::new(
-            "device1".to_string(),
-            Some("127.0.0.1".to_string()),
-            Some(8080),
-            Some(8080),
-        );
-        handler.handle_register(device).await;
-
-        let device_manager = get_device_manager();
-        let guard = device_manager.try_lock();
-        if let Ok(guard) = guard {
-            let devices = guard.get_all_devices_except_self();
-            assert_eq!(devices.len(), 1);
-        } else {
-            assert!(false);
-        }
-        handler.handle_unregister("device1".to_string()).await;
-        let guard = device_manager.try_lock();
-        if let Ok(guard) = guard {
-            let devices = guard.get_all_devices_except_self();
-            assert_eq!(devices.len(), 0);
-        } else {
-            assert!(false);
-        }
-    }
 
     #[tokio::test]
     #[serial]
@@ -560,6 +546,17 @@ mod tests {
             Some(8080),
             Some(8080),
         );
+
+        handler
+            .handle_register(
+                RegisterDeviceMessage::new(
+                    "device1".to_string(),
+                    Some("127.0.0.1".to_string()),
+                    Some(8080),
+                ),
+                SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 8080),
+            )
+            .await;
 
         handler
             .handle_device_list_sync(
