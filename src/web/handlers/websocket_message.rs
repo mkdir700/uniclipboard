@@ -326,6 +326,7 @@ impl WebSocketMessageHandler {
                             self.handle_clipboard_sync(data, message_source).await;
                         }
                         WebSocketMessage::DeviceListSync(mut data) => {
+                            info!("Received device list sync: {:?}", data);
                             // 如果消息来源是其他设备连接到本设备，因为只有在建立 websocket 时，才会得知对方的端口号
                             // 所以此时需要对该设备的端口号进行更新
                             if let MessageSource::IpPort(addr) = message_source {
@@ -351,6 +352,7 @@ impl WebSocketMessageHandler {
                             self.handle_device_list_sync(data, message_source).await;
                         }
                         WebSocketMessage::Register(register_device_message) => {
+                            info!("Received register message: {:?}", register_device_message);
                             if let MessageSource::IpPort(addr) = message_source {
                                 self.handle_register(register_device_message, addr).await;
                             } else {
