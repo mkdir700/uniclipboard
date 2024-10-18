@@ -6,12 +6,7 @@ use chrono::Utc;
 use clipboard_rs::common::RustImage;
 use clipboard_rs::{Clipboard, ClipboardContext};
 use clipboard_rs::{ClipboardHandler, RustImageData};
-use image::GenericImageView;
-use image::{ImageBuffer, Rgba, RgbaImage};
 use log::debug;
-use png::Encoder;
-use rayon::prelude::*;
-use std::io::Cursor;
 use std::sync::{Arc, Mutex};
 use tokio::sync::Notify;
 
@@ -217,7 +212,7 @@ impl RsClipboard {
 #[cfg(test)]
 mod mock {
     use super::*;
-    use image::{DynamicImage, ImageBuffer, Rgba};
+    use image::{DynamicImage, GenericImageView, ImageBuffer, Rgba};
 
     pub struct MockClipboardContext {
         text: Mutex<String>,
