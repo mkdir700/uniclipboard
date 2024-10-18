@@ -5,7 +5,7 @@ use serial_test::serial;
 use uniclipboard::web::WebServer;
 use std::net::SocketAddr;
 use std::{sync::Arc, time::Duration};
-use uniclipboard::{Config, Payload, WebSocketHandler};
+use uniclipboard::{Config, Payload, WebSocketHandler, WebSocketMessageHandler};
 use uniclipboard::{
     clipboard::LocalClipboard,
     config::CONFIG,
@@ -27,8 +27,9 @@ fn setup_config() -> Config {
 async fn create_test_uni_clipboard(config: Config) -> Result<UniClipboard> {
     let local_clipboard = Arc::new(LocalClipboard::new());
     let remote_sync_manager = Arc::new(RemoteSyncManager::new());
-    let websocket_handler = Arc::new(WebSocketHandler::new());
-    let websocket_sync = Arc::new(WebSocketSync::new(websocket_handler.clone()));
+    let websocket_message_handler = Arc::new(WebSocketMessageHandler::new());
+    let websocket_handler = Arc::new(WebSocketHandler::new(websocket_message_handler.clone()));
+    let websocket_sync = Arc::new(WebSocketSync::new(websocket_message_handler));
     let webserver = WebServer::new(
         SocketAddr::new(
             config.webserver_addr.unwrap().parse()?,

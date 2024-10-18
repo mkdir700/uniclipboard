@@ -1,7 +1,7 @@
 use log::warn;
 use once_cell::sync::Lazy;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fmt::{self, Display};
 use std::sync::Mutex;
 
@@ -120,6 +120,8 @@ impl DeviceManager {
                 && device.port.unwrap() == port
         })
     }
+
+    
 }
 
 #[cfg(test)]

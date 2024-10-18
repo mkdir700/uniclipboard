@@ -3,9 +3,10 @@ use bytes::Bytes;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use serde_json;
+use tokio_tungstenite::tungstenite::Message;
 use std::fmt;
 use twox_hash::xxh3::hash64;
-
+use anyhow::Result;
 use crate::device::Device;
 
 // pub enum FileType {
@@ -238,7 +239,7 @@ impl PartialEq for Payload {
 impl Eq for Payload {}
 
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(tag = "type", content = "data")]
 pub enum WebSocketMessage {
     ClipboardSync(ClipboardSyncMessage),
@@ -255,6 +256,28 @@ pub struct ClipboardSyncMessage {
     pub file_size: u64,
     pub payload: Option<Payload>,
     pub timestamp: u64,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct DeviceListData {
+    pub devices: Vec<Device>,
+    // 经转发过的设备ID列表
+    pub replay_device_ids: Vec<String>,
+}
+
+impl WebSocketMessage {
+    pub fn to_tungstenite_message(&self) -> Message {
+        Message::text(serde_json::to_string(self).unwrap())
+    }
+
+    pub fn to_json(&self) -> Result<String> {
+        match serde_json::to_string(self) {
+            Ok(json) => Ok(json),
+            Err(e) => {
+                anyhow::bail!("Failed to serialize WebSocketMessage: {}", e)
+            }
+        }
+    }
 }
 
 impl ClipboardSyncMessage {
@@ -292,11 +315,4 @@ impl fmt::Display for ClipboardSyncMessage {
             self.device_id, self.file_code, self.file_type, self.file_size, self.timestamp
         )
     }
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-pub struct DeviceListData {
-    pub devices: Vec<Device>,
-    // 经转发过的设备ID列表
-    pub replay_device_ids: Vec<String>,
 }
