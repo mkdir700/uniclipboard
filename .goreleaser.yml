@@ -49,11 +49,11 @@ snapcrafts:
     apps:
       uniclipboard:
         command: uniclipboard
-        plugs: [network, network-bind, home]
+        plugs: [network, network-bind, home, x11, wayland, desktop, desktop-legacy, unity7]
       # uniclipboard-daemon:
       #   command: uniclipboard
       #   daemon: simple
-      #   plugs: [network, network-bind, home]
+      #   plugs: plugs: [network, network-bind, home, x11, wayland, desktop, desktop-legacy, unity7]
 
 release:
   draft: true
