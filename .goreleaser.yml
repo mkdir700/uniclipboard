@@ -33,6 +33,25 @@ nfpms:
       - rpm
     bindir: /usr/bin
 
+snapcrafts:
+  - id: uniclipboard
+    name: uniclipboard
+    title: UniClipboard
+    publish: false
+    summary: A cross-platform clipboard sharing tool 
+    description: |
+      A cross-platform clipboard sharing tool designed to create a seamless clipboard experience
+      across multiple devices.
+    grade: stable
+    confinement: strict
+    license: Apache-2.0
+    base: bare
+    apps:
+      uniclipboard:
+        command: uniclipboard
+        daemon: simple  # autostart and always running in the background
+        plugs: [network, network-bind, home]
+
 release:
   draft: true
   replace_existing_draft: true
