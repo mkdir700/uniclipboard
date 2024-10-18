@@ -35,7 +35,7 @@ chocolateys:
     release_notes: "https://github.com/mkdir700/uniclipboard/releases/tag/v{{ .Version }}"
     url_template: "https://github.com/mkdir700/uniclipboard/releases/download/{{ .Tag }}/{{ .Env.ARTIFACT_NAME }}"
     api_key: "{{ .Env.CHOCOLATEY_API_KEY }}"
-    skip_publish: true # 在windows上发布
+    skip_publish: false
 
 release:
   disable: true
