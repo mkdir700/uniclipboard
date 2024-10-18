@@ -542,9 +542,12 @@ mod tests {
 
         let device_manager = get_device_manager();
         let guard = device_manager.try_lock();
-        if let Ok(guard) = guard {
+        if let Ok(mut guard) = guard {
             let devices = guard.get_all_devices();
-            assert_eq!(devices.len(), 3);
+            let len = devices.len();
+            assert_eq!(len, 3);
+            guard.clear();
+            assert_eq!(guard.get_all_devices().len(), 0);
         } else {
             assert!(false);
         }

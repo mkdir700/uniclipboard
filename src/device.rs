@@ -114,6 +114,10 @@ impl DeviceManager {
         self.devices.values().collect()
     }
 
+    pub fn clear(&mut self) {
+        self.devices.clear();
+    }
+
     /// 通过 ip 和 port 获取设备
     pub fn get_device_by_ip_and_port(&self, ip: &str, port: u16) -> Option<&Device> {
         self.devices.values().find(|device| {
