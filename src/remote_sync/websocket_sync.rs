@@ -68,7 +68,7 @@ impl WebSocketSync {
                 format!(
                     "{}:{}",
                     device.ip.as_ref().unwrap(),
-                    device.port.as_ref().unwrap()
+                    device.server_port.as_ref().unwrap()
                 ),
                 client,
             )
