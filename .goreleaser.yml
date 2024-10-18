@@ -45,12 +45,15 @@ snapcrafts:
     grade: stable
     confinement: strict
     license: Apache-2.0
-    base: core18
+    base: core20
     apps:
       uniclipboard:
         command: uniclipboard
-        daemon: simple  # autostart and always running in the background
         plugs: [network, network-bind, home]
+      # uniclipboard-daemon:
+      #   command: uniclipboard
+      #   daemon: simple
+      #   plugs: [network, network-bind, home]
 
 release:
   draft: true
