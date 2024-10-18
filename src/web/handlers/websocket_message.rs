@@ -303,16 +303,22 @@ impl WebSocketMessageHandler {
                         WebSocketMessage::DeviceListSync(data) => {
                             self.handle_device_list_sync(data, message_source).await;
                         }
-                        WebSocketMessage::Register(mut device) => {
-                            match message_source {
+                        WebSocketMessage::Register(register_device_message) => {
+                            let device = match message_source {
                                 MessageSource::IpPort(addr) => {
-                                    device.ip = Some(addr.ip().to_string());
-                                    device.port = Some(addr.port());
+                                    Device::new(
+                                        register_device_message.id,
+                                        Some(addr.ip().to_string()),
+                                        Some(addr.port()),
+                                        Some(addr.port()),
+                                    )
                                 }
                                 MessageSource::DeviceId(device_id) => {
-                                    device.id = device_id;
+                                    // 这种情况应该不会发生，除非是重复注册
+                                    error!("Device {} is already registered", device_id);
+                                    return;
                                 }
-                            }
+                            };
                             self.handle_register(device).await;
                         }
                         WebSocketMessage::Unregister(device_id) => {
