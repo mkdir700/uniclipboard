@@ -27,8 +27,8 @@ pub enum MessageSource {
 pub struct WebSocketMessageHandler {
     clipboard_message_sync_sender: Arc<Mutex<mpsc::Sender<ClipboardSyncMessage>>>,
     clipboard_message_sync_receiver: Arc<Mutex<mpsc::Receiver<ClipboardSyncMessage>>>,
-    device_online_sender: Arc<Mutex<mpsc::Sender<Device>>>,
-    device_online_receiver: Arc<Mutex<mpsc::Receiver<Device>>>,
+    // device_online_sender: Arc<Mutex<mpsc::Sender<Device>>>,
+    // device_online_receiver: Arc<Mutex<mpsc::Receiver<Device>>>,
     device_offline_sender: Arc<Mutex<mpsc::Sender<SocketAddr>>>,
     device_offline_receiver: Arc<Mutex<mpsc::Receiver<SocketAddr>>>,
     // 连接到本设备的设备, ip:port -> Client
@@ -53,14 +53,14 @@ pub struct WebSocketMessageHandler {
 impl WebSocketMessageHandler {
     pub fn new() -> Self {
         let (clipboard_message_sync_sender, clipboard_message_sync_receiver) = mpsc::channel(100);
-        let (device_online_sender, device_online_receiver) = mpsc::channel(20);
+        // let (device_online_sender, device_online_receiver) = mpsc::channel(20);
         let (device_offline_sender, device_offline_receiver) = mpsc::channel(20);
         let (outgoing_connections_message_tx, outgoing_connections_message_rx) = mpsc::channel(20);
         Self {
             clipboard_message_sync_sender: Arc::new(Mutex::new(clipboard_message_sync_sender)),
             clipboard_message_sync_receiver: Arc::new(Mutex::new(clipboard_message_sync_receiver)),
-            device_online_sender: Arc::new(Mutex::new(device_online_sender)),
-            device_online_receiver: Arc::new(Mutex::new(device_online_receiver)),
+            // device_online_sender: Arc::new(Mutex::new(device_online_sender)),
+            // device_online_receiver: Arc::new(Mutex::new(device_online_receiver)),
             device_offline_sender: Arc::new(Mutex::new(device_offline_sender)),
             device_offline_receiver: Arc::new(Mutex::new(device_offline_receiver)),
             incoming_connections: Arc::new(RwLock::new(Clients::default())),
@@ -176,9 +176,9 @@ impl WebSocketMessageHandler {
         );
     }
 
-    pub async fn count_outgoing_connections(&self) -> usize {
-        self.outgoing_connections.read().await.len()
-    }
+    // pub async fn count_outgoing_connections(&self) -> usize {
+    //     self.outgoing_connections.read().await.len()
+    // }
 
     pub async fn remove_outgoing_connection(&self, id: &String) {
         let mut clients = self.outgoing_connections.write().await;
@@ -187,9 +187,9 @@ impl WebSocketMessageHandler {
         clients.remove(id);
     }
 
-    pub async fn is_outgoing_connection(&self, id: &String) -> bool {
-        self.outgoing_connections.read().await.contains_key(id)
-    }
+    // pub async fn is_outgoing_connection(&self, id: &String) -> bool {
+    //     self.outgoing_connections.read().await.contains_key(id)
+    // }
 
     /// 断开所有 outgoing 连接
     pub async fn disconnect_all_outgoing_connections(&self) {
@@ -315,7 +315,7 @@ impl WebSocketMessageHandler {
                 error!("Failed to lock device manager");
             }
         }
-        let _ = self.device_online_sender.lock().await.send(device).await;
+        // let _ = self.device_online_sender.lock().await.send(device).await;
     }
 
     pub async fn handle_unregister(&self, device_id: String) {
@@ -417,23 +417,23 @@ impl WebSocketMessageHandler {
         }
     }
 
-    pub async fn subscribe_device_online(&self) -> Result<Option<Device>> {
-        let reader = self.device_online_receiver.clone();
-        loop {
-            let data = reader.lock().await.recv().await;
-            if let Some(data) = data {
-                return Ok(Some(data));
-            }
-        }
-    }
+    // pub async fn subscribe_device_online(&self) -> Result<Option<Device>> {
+    //     let reader = self.device_online_receiver.clone();
+    //     loop {
+    //         let data = reader.lock().await.recv().await;
+    //         if let Some(data) = data {
+    //             return Ok(Some(data));
+    //         }
+    //     }
+    // }
 
-    pub async fn subscribe_device_offline(&self) -> Result<Option<SocketAddr>> {
-        let reader = self.device_offline_receiver.clone();
-        loop {
-            let data = reader.lock().await.recv().await;
-            if let Some(data) = data {
-                return Ok(Some(data));
-            }
-        }
-    }
+    // pub async fn subscribe_device_offline(&self) -> Result<Option<SocketAddr>> {
+    //     let reader = self.device_offline_receiver.clone();
+    //     loop {
+    //         let data = reader.lock().await.recv().await;
+    //         if let Some(data) = data {
+    //             return Ok(Some(data));
+    //         }
+    //     }
+    // }
 }
