@@ -3,6 +3,7 @@ mod clipboard;
 mod config;
 mod device;
 mod encrypt;
+mod errors;
 mod file_metadata;
 mod key_mouse_monitor;
 mod logger;
@@ -12,13 +13,14 @@ mod remote_sync;
 mod uni_clipboard;
 mod utils;
 mod web;
-mod errors;
 use anyhow::Result;
 use console::style;
+use device::{get_device_manager, Device};
 use log::{error, info};
-use uni_clipboard::UniClipboardBuilder;
-use web::{WebServer, WebSocketMessageHandler};
 use std::sync::Arc;
+use uni_clipboard::UniClipboardBuilder;
+use utils::get_local_ip;
+use web::{WebServer, WebSocketMessageHandler};
 
 use crate::cli::{interactive_input, parse_args};
 use crate::clipboard::LocalClipboard;
@@ -29,7 +31,7 @@ use crate::web::WebSocketHandler;
 use std::net::SocketAddr;
 
 // 新增函数用于显示标志
-fn display_banner() {
+fn display_banner(local_ip: String) {
     let banner = r#"
 █ █ █▄ █ █ █▀▀ █   █ █▀█ █▄▄ █▀█ ▄▀█ █▀█ █▀▄
 █▄█ █ ▀█ █ █▄▄ █▄▄ █ █▀▀ █▄█ █▄█ █▀█ █▀▄ █▄▀
@@ -45,14 +47,21 @@ fn display_banner() {
         style(version).yellow()
     );
 
+    println!(
+        "{} {}",
+        style("本地 IP 地址: ").yellow().bold(),
+        style(local_ip).green()
+    );
+
     println!();
 }
 
 #[tokio::main]
 async fn main() -> Result<()> {
     logger::init();
+    let local_ip = get_local_ip();
 
-    display_banner();
+    display_banner(local_ip.clone());
 
     let args = parse_args();
     let mut config = Config::load(None)?;
@@ -60,6 +69,18 @@ async fn main() -> Result<()> {
         interactive_input(&mut config)?;
     }
     config.save(None)?;
+
+    {
+        let mutex = get_device_manager();
+        let mut device = Device::new(
+            config.device_id.clone(),
+            Some(local_ip.clone()),
+            None,
+            Some(config.webserver_port.unwrap()),
+        );
+        device.set_self_register(true);
+        mutex.lock().unwrap().add(device);
+    }
 
     // 暂时禁用
     // let key_mouse_monitor = Arc::new(KeyMouseMonitor::new(Duration::from_secs(
@@ -92,7 +113,7 @@ async fn main() -> Result<()> {
         Ok(_) => {
             info!("UniClipboard started successfully");
             app.wait_for_stop().await?;
-        },
+        }
         Err(e) => error!("Failed to start UniClipboard: {}", e),
     }
     Ok(())
