@@ -1,7 +1,7 @@
 use log::warn;
 use once_cell::sync::Lazy;
 use serde::{Deserialize, Serialize};
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::fmt::{self, Display};
 use std::sync::Mutex;
 
@@ -11,6 +11,7 @@ pub struct Device {
     pub ip: Option<String>,
     pub port: Option<u16>,
     pub server_port: Option<u16>,
+    pub self_register: bool,
 }
 
 pub struct DeviceManager {
@@ -37,7 +38,16 @@ impl Device {
             ip,
             port,
             server_port,
+            self_register: false,
         }
+    }
+
+    pub fn is_self_register(&self) -> bool {
+        self.self_register
+    }
+
+    pub fn set_self_register(&mut self, self_register: bool) {
+        self.self_register = self_register;
     }
 }
 
@@ -110,8 +120,12 @@ impl DeviceManager {
         self.devices.contains_key(device_id)
     }
 
-    pub fn get_all_devices(&self) -> Vec<&Device> {
-        self.devices.values().collect()
+    // 获取除了自己的所有设备
+    pub fn get_all_devices_except_self(&self) -> Vec<&Device> {
+        self.devices
+            .values()
+            .filter(|device| !device.is_self_register())
+            .collect()
     }
 
     pub fn clear(&mut self) {
@@ -127,8 +141,6 @@ impl DeviceManager {
                 && device.port.unwrap() == port
         })
     }
-
-    
 }
 
 #[cfg(test)]

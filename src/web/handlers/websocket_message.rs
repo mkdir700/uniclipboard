@@ -313,7 +313,6 @@ impl WebSocketMessageHandler {
                                     device.id = device_id;
                                 }
                             }
-                            self.handle_register(device).await;
                         }
                         WebSocketMessage::Unregister(device_id) => {
                             self.handle_unregister(device_id).await;
@@ -492,7 +491,7 @@ mod tests {
         let device_manager = get_device_manager();
         let guard = device_manager.try_lock();
         if let Ok(guard) = guard {
-            let devices = guard.get_all_devices();
+            let devices = guard.get_all_devices_except_self();
             assert_eq!(devices.len(), 1);
         } else {
             assert!(false);
@@ -500,7 +499,7 @@ mod tests {
         handler.handle_unregister("device1".to_string()).await;
         let guard = device_manager.try_lock();
         if let Ok(guard) = guard {
-            let devices = guard.get_all_devices();
+            let devices = guard.get_all_devices_except_self();
             assert_eq!(devices.len(), 0);
         } else {
             assert!(false);
@@ -543,11 +542,11 @@ mod tests {
         let device_manager = get_device_manager();
         let guard = device_manager.try_lock();
         if let Ok(mut guard) = guard {
-            let devices = guard.get_all_devices();
+            let devices = guard.get_all_devices_except_self();
             let len = devices.len();
             assert_eq!(len, 3);
             guard.clear();
-            assert_eq!(guard.get_all_devices().len(), 0);
+            assert_eq!(guard.get_all_devices_except_self().len(), 0);
         } else {
             assert!(false);
         }

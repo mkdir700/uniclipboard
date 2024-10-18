@@ -234,7 +234,7 @@ impl WebSocketClient {
         let devices = device_manager
             .lock()
             .map_err(|_| anyhow::anyhow!("Failed to lock device manager"))?
-            .get_all_devices()
+            .get_all_devices_except_self()
             .into_iter()
             .cloned()
             .collect::<Vec<_>>();
