@@ -1,6 +1,7 @@
 use arboard::Clipboard;
 use bytes::Bytes;
 use chrono::Utc;
+use clipboard_rs::{common::RustImage, RustImageData};
 use image::ImageReader;
 use serial_test::serial;
 use std::fs;
@@ -147,17 +148,24 @@ async fn test_write_two_images_and_read() -> Result<(), Box<dyn std::error::Erro
     let img2_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("test_resources")
         .join("google.png");
-    let img2 = ImageReader::open(&img2_path)?.decode()?;
-    let (width2, height2) = (img2.width(), img2.height());
-    let image_bytes2 = fs::read(&img2_path)?;
+    let image2 = match RustImageData::from_path(img2_path.to_str().unwrap()) {
+        Ok(image) => image,
+        Err(e) => {
+            println!("Error: {}", e);
+            panic!("Error: {}", e);
+        }
+    };
+    let (width2, height2) = image2.get_size();
+    let png_buffer = image2.to_png().unwrap();
+    let png_bytes = png_buffer.get_bytes().to_vec();
     let payload2 = Payload::new_image(
-        Bytes::from(image_bytes2.clone()),
+        Bytes::from(png_bytes.clone()),
         "test_device".to_string(),
         Utc::now(),
         width2 as usize,
         height2 as usize,
         "png".to_string(),
-        image_bytes2.len(),
+        png_bytes.len(),
     );
     local_handler.write(payload2.clone()).await?;
 

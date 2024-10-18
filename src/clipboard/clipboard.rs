@@ -88,66 +88,13 @@ impl RsClipboard {
             .map_err(|e| anyhow::anyhow!("Failed to set image: {}", e))
     }
 
-    /// 并行转换图片为 png 格式
-    fn parallel_convert_image(&self, image: RustImageData) -> Result<Vec<u8>> {
-        let img = image
-            .to_rgba8()
-            .map_err(|e| anyhow::anyhow!("Failed to convert image: {}", e))?;
-        let (width, height) = image.get_size();
-
-        // 如果图像很小，不进行并行处理
-        if width * height < 1_000_000 {
-            return self.convert_image_simple(img, width, height);
-        }
-
-        // 并行处理大图像
-        let chunk_size = height / rayon::current_num_threads().max(1) as u32 + 1;
-        let chunks: Vec<ImageBuffer<Rgba<u8>, Vec<u8>>> = (0..height)
-            .step_by(chunk_size as usize)
-            .collect::<Vec<u32>>()
-            .par_iter()
-            .map(|&start_y| {
-                let end_y = (start_y + chunk_size).min(height);
-                img.view(0, start_y, width, end_y - start_y).to_image()
-            })
-            .collect();
-
-        // 重新组合图像
-        let mut combined = ImageBuffer::new(width, height);
-        for (i, chunk) in chunks.into_iter().enumerate() {
-            let start_y = i as u32 * chunk_size;
-            image::imageops::replace(&mut combined, &chunk, 0, start_y as i64);
-        }
-
-        // 编码为PNG
-        self.convert_image_simple(combined, width, height)
-    }
-
-    fn convert_image_simple(&self, img: RgbaImage, width: u32, height: u32) -> Result<Vec<u8>> {
-        let mut buffer = Vec::new();
-        {
-            let mut encoder = Encoder::new(Cursor::new(&mut buffer), width, height);
-            encoder.set_color(png::ColorType::Rgba);
-            encoder.set_depth(png::BitDepth::Eight);
-            encoder.set_compression(png::Compression::Best);
-            let mut writer = encoder
-                .write_header()
-                .map_err(|e| anyhow::anyhow!("Failed to write PNG header: {}", e))?;
-            writer
-                .write_image_data(img.into_raw().as_slice())
-                .map_err(|e| anyhow::anyhow!("Failed to write PNG data: {}", e))?;
-            // writer 在这里被丢弃，结束对 buffer 的借用
-        }
-        Ok(buffer)
-    }
-
     pub fn read(&self) -> Result<Payload> {
         if let Ok(image) = self.read_image() {
             let (width, height) = image.get_size();
-            debug!("开始转换图像: {}x{}", width, height);
-            let png_bytes = self.parallel_convert_image(image)?;
-            debug!("图像转换完成: {}x{}", width, height);
-
+            let png_bytes = {
+                let png_buffer = image.to_png().unwrap();
+                png_buffer.get_bytes().to_vec()
+            };
             let size = png_bytes.len();
             let device_id = CONFIG.read().unwrap().get_device_id();
             Ok(Payload::new_image(

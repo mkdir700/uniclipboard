@@ -90,6 +90,9 @@ impl DeviceManager {
                 new_devices.push(device.clone());
             }
         }
+        for device in &new_devices {
+            self.add(device.clone());
+        }
         new_devices
     }
 
@@ -109,6 +112,10 @@ impl DeviceManager {
 
     pub fn get_all_devices(&self) -> Vec<&Device> {
         self.devices.values().collect()
+    }
+
+    pub fn clear(&mut self) {
+        self.devices.clear();
     }
 
     /// 通过 ip 和 port 获取设备
