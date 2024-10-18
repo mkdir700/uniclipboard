@@ -313,6 +313,7 @@ impl WebSocketMessageHandler {
                                     device.id = device_id;
                                 }
                             }
+                            self.handle_register(device).await;
                         }
                         WebSocketMessage::Unregister(device_id) => {
                             self.handle_unregister(device_id).await;
@@ -346,6 +347,30 @@ impl WebSocketMessageHandler {
                 error!("Failed to lock device manager");
             }
         }
+        // 广播设备列表
+        let device_list: Vec<Device> = {
+            let device_manager = get_device_manager();
+            device_manager
+                .lock()
+                .unwrap()
+                .get_all_devices()
+                .into_iter()
+                .map(|device| device.clone())
+                .collect()
+        };
+
+        let device_id = {
+            let config = CONFIG.read().unwrap();
+            config.device_id.clone()
+        };
+
+        let message = WebSocketMessage::DeviceListSync(DeviceListData {
+            devices: device_list,
+            replay_device_ids: vec![device_id.clone()],
+        });
+        let _ = self
+            .broadcast(&message, &Some(vec![device_id.clone()]))
+            .await;
         // let _ = self.device_online_sender.lock().await.send(device).await;
     }
 
