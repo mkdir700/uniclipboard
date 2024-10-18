@@ -308,6 +308,13 @@ jobs:
           echo "Contents of dist directory:"
           ls -R dist/
 
+      - name: Store snap
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.RELEASE_VERSION }}-snap
+          path: dist/*.snap
+          retention-days: 1
+
   release-for-windows:
     name: Release for Windows
     needs: [build]
