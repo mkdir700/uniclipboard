@@ -96,8 +96,8 @@ impl WebSocketSync {
     async fn listen_new_devices(&self) {
         let mut new_devices_rx = subscribe_new_devices();
         let self_clone = Arc::new(self.clone());
-        let peer_device_addr = self_clone.peer_device_addr.clone().unwrap();
-        let peer_device_port = self_clone.peer_device_port.clone().unwrap();
+        let peer_device_addr = self_clone.peer_device_addr.clone().unwrap_or("".to_string());
+        let peer_device_port = self_clone.peer_device_port.clone().unwrap_or(0);
 
         tokio::spawn(async move {
             while let Ok(device) = new_devices_rx.recv().await {
