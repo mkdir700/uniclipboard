@@ -6,8 +6,10 @@ use tokio::{self, time::timeout};
 
 use uniclipboard::{
     device::Device,
+    get_device_manager,
     message::{ClipboardSyncMessage, DeviceListData, Payload, WebSocketMessage},
     network::WebSocketClient,
+    remote_sync::WebSocketSync,
     web::WebServer,
     Config, WebSocketHandler, WebSocketMessageHandler, CONFIG,
 };
@@ -17,6 +19,7 @@ struct WebServerWrapper {
     #[allow(unused)]
     websocket_handler: Arc<WebSocketHandler>,
     webserver: Arc<WebServer>,
+    websocket_sync: Arc<WebSocketSync>,
 }
 
 fn setup_config() -> Config {
@@ -37,10 +40,12 @@ fn setup_webserver() -> WebServerWrapper {
         ),
         websocket_handler.clone(),
     );
+    let websocket_sync = WebSocketSync::new(websocket_message_handler.clone());
     WebServerWrapper {
         websocket_message_handler: websocket_message_handler.clone(),
         websocket_handler: websocket_handler.clone(),
         webserver: Arc::new(webserver),
+        websocket_sync: Arc::new(websocket_sync),
     }
 }
 
@@ -208,6 +213,36 @@ async fn test_websocket_subscribe() {
     // 延迟一段时间，让 server 调用设备下线的方法
     tokio::time::sleep(Duration::from_secs(1)).await;
     w.webserver.shutdown().await.unwrap();
+}
+
+#[tokio::test]
+#[serial]
+async fn test_is_connected() {
+    let w = setup_webserver();
+    let webserver_clone = Arc::clone(&w.webserver);
+    tokio::spawn(async move { webserver_clone.run().await });
+    tokio::time::sleep(Duration::from_secs(1)).await;
+    let device1 = Device::new(
+        "device1".to_string(),
+        Some("127.0.0.1".to_string()),
+        None,
+        Some(8333),
+    );
+    if let Err(_e) = w.websocket_sync.connect_device(&device1).await {
+        println!("跳过");
+    }
+
+    assert!(w.websocket_message_handler.is_connected(&device1).await);
+
+    let device_manager = get_device_manager();
+    let devices = device_manager
+        .lock()
+        .unwrap()
+        .get_all_devices()
+        .into_iter()
+        .map(|d| d.clone())
+        .collect::<Vec<_>>();
+    println!("devices: {:?}", devices);
 }
 
 // / 测试订阅设备上下线

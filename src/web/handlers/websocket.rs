@@ -12,8 +12,6 @@ use warp::ws::{Message, WebSocket};
 use super::websocket_message::MessageSource;
 use super::websocket_message::WebSocketMessageHandler;
 
-pub type Clients = HashMap<String, mpsc::UnboundedSender<Result<Message, warp::Error>>>;
-
 pub struct WebSocketHandler {
     message_handler: Arc<WebSocketMessageHandler>,
 }

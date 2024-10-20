@@ -3,6 +3,7 @@ use crate::device::get_device_manager;
 use crate::device::Device;
 use crate::message::ClipboardSyncMessage;
 use crate::message::DeviceListData;
+use crate::message::RegisterDeviceMessage;
 use crate::message::WebSocketMessage;
 use anyhow::Result;
 use futures::StreamExt;
@@ -19,6 +20,7 @@ use tokio_tungstenite::tungstenite::http::Uri;
 use tokio_tungstenite::tungstenite::Message;
 use tokio_tungstenite::{MaybeTlsStream, WebSocketStream};
 
+#[derive(Debug)]
 pub struct WebSocketClient {
     uri: Uri,
     writer: Arc<
@@ -214,7 +216,11 @@ impl WebSocketClient {
             Device::new(device_id, None, None, server_port)
         });
 
-        let web_socket_message = WebSocketMessage::Register(device);
+        let web_socket_message = WebSocketMessage::Register(RegisterDeviceMessage::new(
+            device.id,
+            device.ip,
+            device.server_port,
+        ));
         let message = serde_json::to_string(&web_socket_message)?;
         let mut writer = if let Some(writer) = self.writer.as_ref() {
             writer.lock().await
