@@ -190,3 +190,5 @@ mod tests {
         assert_eq!(manager.has("test1"), false);
     }
 }
+
+
