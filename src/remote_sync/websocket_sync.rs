@@ -46,7 +46,7 @@ impl WebSocketSync {
     }
 
     /// 连接指定设备
-    async fn connect_device(&self, device: &Device) -> Result<()> {
+    pub async fn connect_device(&self, device: &Device) -> Result<()> {
         let uri = format!(
             "ws://{}:{}/ws",
             device.ip.as_ref().unwrap(),
@@ -57,21 +57,14 @@ impl WebSocketSync {
 
         let mut client = WebSocketClient::new(uri);
         client.connect().await?;
-        client.register(None).await?;
+        client.register(Some(device.clone())).await?;
         client.sync_device_list().await?;
 
         info!("Connected to device: {}", device);
 
         let message_handler = self.websocket_message_handler.clone();
         message_handler
-            .add_outgoing_connection(
-                format!(
-                    "{}:{}",
-                    device.ip.as_ref().unwrap(),
-                    device.server_port.as_ref().unwrap()
-                ),
-                client,
-            )
+            .add_outgoing_connection(device.id.clone(), client)
             .await;
         Ok(())
     }

@@ -79,7 +79,7 @@ impl WebSocketMessageHandler {
 
     pub async fn add_incoming_connection(
         &self,
-        id: String,
+        id: IpPort,
         client: mpsc::UnboundedSender<Result<Message, warp::Error>>,
     ) {
         let mut clients = self.incoming_connections.write().await;
@@ -90,12 +90,12 @@ impl WebSocketMessageHandler {
         self.incoming_connections.read().await.len()
     }
 
-    pub async fn remove_incoming_connection(&self, id: String) {
+    pub async fn remove_incoming_connection(&self, id: IpPort) {
         let mut clients = self.incoming_connections.write().await;
         clients.remove(&id);
     }
 
-    pub async fn disconnect_incoming_connection(&self, id: String, addr: Option<SocketAddr>) {
+    pub async fn disconnect_incoming_connection(&self, id: IpPort, addr: Option<SocketAddr>) {
         self.remove_incoming_connection(id.clone()).await;
         println!("disconnect_incoming_connection: {}", id);
         match addr {
@@ -157,7 +157,7 @@ impl WebSocketMessageHandler {
 }
 
 impl WebSocketMessageHandler {
-    pub async fn add_outgoing_connection(&self, id: String, client: WebSocketClient) {
+    pub async fn add_outgoing_connection(&self, id: DeviceId, client: WebSocketClient) {
         let mut clients = self.outgoing_connections.write().await;
         let message_rx = client.subscribe();
         let arc_client = Arc::new(RwLock::new(client));
@@ -188,14 +188,14 @@ impl WebSocketMessageHandler {
     //     self.outgoing_connections.read().await.len()
     // }
 
-    pub async fn remove_outgoing_connection(&self, id: &String) {
+    pub async fn remove_outgoing_connection(&self, id: &DeviceId) {
         let mut clients = self.outgoing_connections.write().await;
         let client = clients.get_mut(id).unwrap();
         client.2.abort();
         clients.remove(id);
     }
 
-    // pub async fn is_outgoing_connection(&self, id: &String) -> bool {
+    // pub async fn is_outgoing_connection(&self, id: &DeviceId) -> bool {
     //     self.outgoing_connections.read().await.contains_key(id)
     // }
 

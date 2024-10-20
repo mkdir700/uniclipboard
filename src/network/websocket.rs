@@ -20,6 +20,7 @@ use tokio_tungstenite::tungstenite::http::Uri;
 use tokio_tungstenite::tungstenite::Message;
 use tokio_tungstenite::{MaybeTlsStream, WebSocketStream};
 
+#[derive(Debug)]
 pub struct WebSocketClient {
     uri: Uri,
     writer: Arc<
