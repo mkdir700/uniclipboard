@@ -99,7 +99,7 @@ jobs:
         uses: peter-evans/create-pull-request@v7
         if: ${{ github.event.inputs.test-workflow == 'false' }}
         with:
-          token: ${{ secrets.GITHUB_TOKEN }}
+          token: ${{ secrets.PAT_WITH_PUSH_ACCESS }}
           title: "Bump version to ${{ env.RELEASE_VERSION }}"
           body: "Bump version to ${{ env.RELEASE_VERSION }}"
           branch: "bump-version-to-${{ env.RELEASE_VERSION }}"
