@@ -1,13 +1,10 @@
-use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::Arc;
 
-use anyhow::Result;
 use futures::{FutureExt, StreamExt};
 use log::{error, info};
-use tokio::sync::mpsc;
 use tokio_stream::wrappers::UnboundedReceiverStream;
-use warp::ws::{Message, WebSocket};
+use warp::ws::WebSocket;
 
 use super::websocket_message::MessageSource;
 use super::websocket_message::WebSocketMessageHandler;

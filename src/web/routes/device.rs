@@ -11,7 +11,7 @@ pub fn route() -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejectio
             let mutex = device_manager
                 .lock()
                 .map_err(|e| warp::reject::custom(LockError(e.to_string())))?;
-            mutex.get_all_devices().into_iter().cloned().collect()
+            mutex.get_all_devices().map_err(|e| warp::reject::custom(LockError(e.to_string())))?
         };
         ApiResponse::success_list(devices).into_response()
     })

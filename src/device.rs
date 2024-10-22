@@ -1,23 +1,82 @@
+use crate::db::dao;
+use crate::db::DB_POOL;
+use crate::models::DbDevice;
+use anyhow::Result;
+use chrono::Utc;
 use log::warn;
 use once_cell::sync::Lazy;
 use serde::{Deserialize, Serialize};
+use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::fmt::{self, Display};
 use std::sync::Mutex;
 use tokio::sync::broadcast;
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Device {
-    pub id: String,
-    pub ip: Option<String>,
-    pub port: Option<u16>,
-    pub server_port: Option<u16>,
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+pub enum DeviceStatus {
+    Online = 0,
+    Offline = 1,
+    Unknown = 2,
 }
 
-pub struct DeviceManager {
-    devices: HashMap<String, Device>,
-    self_device: Option<String>,
+impl PartialEq for DeviceStatus {
+    fn eq(&self, other: &Self) -> bool {
+        *self as i32 == *other as i32
+    }
 }
+
+impl Eq for DeviceStatus {}
+
+impl PartialOrd for DeviceStatus {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for DeviceStatus {
+    fn cmp(&self, other: &Self) -> Ordering {
+        (*self as i32).cmp(&(*other as i32))
+    }
+}
+
+impl From<DeviceStatus> for i32 {
+    fn from(status: DeviceStatus) -> Self {
+        status as i32
+    }
+}
+
+impl TryFrom<i32> for DeviceStatus {
+    type Error = ();
+
+    fn try_from(value: i32) -> Result<Self, Self::Error> {
+        match value {
+            0 => Ok(DeviceStatus::Online),
+            1 => Ok(DeviceStatus::Offline),
+            2 => Ok(DeviceStatus::Unknown),
+            _ => Err(()),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Device {
+    /// 设备ID
+    pub id: String,
+    /// 设备IP
+    pub ip: Option<String>,
+    /// 设备端口
+    pub port: Option<u16>,
+    /// 设备服务端口
+    pub server_port: Option<u16>,
+    /// 设备状态
+    pub status: DeviceStatus,
+    /// 是否是本机设备
+    pub self_device: bool,
+    /// 设备更新时间(时间戳)
+    pub updated_at: Option<i32>,
+}
+
+pub struct DeviceManager {}
 
 pub static GLOBAL_DEVICE_MANAGER: Lazy<Mutex<DeviceManager>> =
     Lazy::new(|| Mutex::new(DeviceManager::new()));
@@ -49,6 +108,9 @@ impl Device {
             ip,
             port,
             server_port,
+            status: DeviceStatus::Unknown,
+            self_device: false,
+            updated_at: None,
         }
     }
 }
@@ -72,123 +134,448 @@ impl Display for Device {
     }
 }
 
+// 将 Device 转换为 DbDevice
+impl From<&Device> for DbDevice {
+    fn from(device: &Device) -> Self {
+        DbDevice {
+            id: device.id.clone(),
+            ip: device.ip.clone(),
+            port: device.port.map(|p| p as i32),
+            server_port: device.server_port.map(|p| p as i32),
+            status: device.status.clone() as i32,
+            self_device: device.self_device,
+            updated_at: device.updated_at.unwrap_or(0) as i32,
+        }
+    }
+}
+
+impl From<&DbDevice> for Device {
+    fn from(db_device: &DbDevice) -> Self {
+        let mut device = Device::new(
+            db_device.id.clone(),
+            db_device.ip.clone(),
+            db_device.port.map(|p| p as u16),
+            db_device.server_port.map(|p| p as u16),
+        );
+        device.self_device = db_device.self_device;
+        device.status = DeviceStatus::try_from(device.status).unwrap_or(DeviceStatus::Unknown);
+        device.updated_at = Some(db_device.updated_at);
+        device
+    }
+}
+
+impl From<DbDevice> for Device {
+    fn from(db_device: DbDevice) -> Self {
+        let mut device = Device::new(
+            db_device.id,
+            db_device.ip,
+            db_device.port.map(|p| p as u16),
+            db_device.server_port.map(|p| p as u16),
+        );
+        device.self_device = db_device.self_device;
+        device.status = DeviceStatus::try_from(db_device.status).unwrap_or(DeviceStatus::Unknown);
+        device.updated_at = Some(db_device.updated_at);
+        device
+    }
+}
+
 impl DeviceManager {
     pub fn new() -> Self {
-        Self {
-            devices: HashMap::new(),
-            self_device: None,
-        }
+        Self {}
     }
 
-    pub fn set_self_device(&mut self, device: &Device) {
-        self.self_device = Some(device.id.clone());
+    pub fn set_self_device(&mut self, device: &Device) -> Result<()> {
+        let mut conn = DB_POOL.get_connection()?;
+        let mut db_device = DbDevice::from(device);
+        if dao::device::is_exist(&mut conn, &db_device.id)? {
+            db_device.self_device = true;
+            println!("Updating device: {:?}", db_device);
+            dao::device::update_device(&mut conn, &db_device)?;
+        } else {
+            return Err(anyhow::anyhow!("Device not found"));
+        }
+        Ok(())
     }
 
-    pub fn add(&mut self, device: Device) {
-        let id = device.id.clone();
-        if self.devices.contains_key(&id) {
-            warn!("Device will be overwritten: {}", id);
+    /// 添加设备，如果设备已存在，则更新设备
+    pub fn add(&mut self, device: Device) -> Result<()> {
+        let mut conn = DB_POOL.get_connection()?;
+        let mut db_device = DbDevice::from(&device);
+        db_device.updated_at = Utc::now().timestamp() as i32;
+        if dao::device::is_exist(&mut conn, &db_device.id)? {
+            warn!("Device will be overwritten: {}", db_device.id);
+            dao::device::update_device(&mut conn, &db_device)?;
+        } else {
+            dao::device::insert_device(&mut conn, &db_device)?;
         }
-        self.devices.insert(id, device.clone());
         let _ = NEW_DEVICE_BROADCASTER.send(device);
+        Ok(())
     }
 
-    // pub fn merge(&mut self, devices: &Vec<Device>) {
-    //     // ? 是否需要增加一个时间戳字段，可用于在合并时进行比对
-    //     for device in devices {
-    //         self.add(device.clone());
-    //     }
-    // }
+    /// 合并
+    /// 如果设备已存在，判断设备的时间戳，如果时间戳大于当前设备的时间戳，则更新设备
+    /// 被新增的设备将通过广播通知
+    pub fn merge(&mut self, devices: &Vec<Device>) -> Result<()> {
+        let mut conn = DB_POOL.get_connection()?;
 
-    /// 合并并返回新增的 Device
-    pub fn merge_and_get_new(&mut self, devices: &Vec<Device>) -> Vec<Device> {
-        let mut new_devices = Vec::new();
-        for device in devices {
-            if !self.has(&device.id) {
-                new_devices.push(device.clone());
-            }
+        let exist_devices: HashMap<String, DbDevice> = dao::device::get_all_devices(&mut conn)?
+            .into_iter()
+            .map(|d| (d.id.clone(), d))
+            .collect();
+
+        let new_devices: Vec<DbDevice> = devices
+            .iter()
+            .filter(|d| !exist_devices.contains_key(&d.id))
+            .map(|d| DbDevice::from(d))
+            .collect();
+        dao::device::batch_insert_devices(&mut conn, &new_devices)?;
+
+        // 通知新设备
+        for device in new_devices {
+            let _ = NEW_DEVICE_BROADCASTER.send(device.into());
         }
-        for device in &new_devices {
-            self.add(device.clone());
+
+        // 获取 devices 中 id 相同但 ip 和 server_port 不同的设备
+        let new_devices: Vec<&Device> = devices
+            .iter()
+            .filter(|d| {
+                if let Some(exist_device) = exist_devices.get(&d.id) {
+                    d.ip != exist_device.ip
+                        || d.server_port.unwrap_or(0) as i32
+                            != exist_device.server_port.unwrap_or(0)
+                } else {
+                    false
+                }
+            })
+            .filter(|d| {
+                if let Some(exist_device) = exist_devices.get(&d.id) {
+                    d.updated_at.unwrap_or(0) > exist_device.updated_at
+                } else {
+                    false
+                }
+            })
+            .collect();
+
+        for device in new_devices {
+            dao::device::update_device(&mut conn, &DbDevice::from(device))?;
         }
-        new_devices
+        Ok(())
     }
 
-    pub fn remove(&mut self, device_id: &str) -> Option<Device> {
-        self.devices.remove(device_id)
+    pub fn get_offline_devices(&self) -> Result<Vec<Device>> {
+        let devices = self.get_all_devices()?;
+        let offline_devices = devices
+            .into_iter()
+            .filter(|d| d.status == DeviceStatus::Offline)
+            .collect();
+        Ok(offline_devices)
+    }
+
+    pub fn remove(&mut self, device_id: &str) -> Result<()> {
+        let mut conn = DB_POOL.get_connection()?;
+        dao::device::delete_device(&mut conn, device_id)?;
+        Ok(())
     }
 
     #[allow(dead_code)]
-    pub fn get(&self, device_id: &str) -> Option<&Device> {
-        self.devices.get(device_id)
+    pub fn get(&self, device_id: &str) -> Result<Option<Device>> {
+        let mut conn = DB_POOL.get_connection()?;
+        let device = dao::device::get_device(&mut conn, device_id)?;
+        Ok(device.map(|d| d.into()))
     }
 
     #[allow(dead_code)]
-    pub fn has(&self, device_id: &str) -> bool {
-        self.devices.contains_key(device_id)
+    pub fn has(&self, device_id: &str) -> Result<bool> {
+        let mut conn = DB_POOL.get_connection()?;
+        Ok(dao::device::is_exist(&mut conn, device_id)?)
     }
 
-    pub fn get_all_devices(&self) -> Vec<&Device> {
-        self.devices.values().collect()
+    pub fn get_all_devices(&self) -> Result<Vec<Device>> {
+        let mut conn = DB_POOL.get_connection()?;
+        let devices = dao::device::get_all_devices(&mut conn)?;
+        Ok(devices.into_iter().map(|d| (&d).into()).collect())
     }
 
     // 获取除了自己的所有设备
-    pub fn get_all_devices_except_self(&self) -> Vec<&Device> {
-        self.devices
-            .values()
-            .filter(|device| {
-                if let Some(self_device) = &self.self_device {
-                    device.id != *self_device
-                } else {
-                    true
-                }
-            })
-            .collect()
+    pub fn get_all_devices_except_self(&self) -> Result<Vec<Device>> {
+        let devices = self
+            .get_all_devices()?
+            .into_iter()
+            .filter(|d| !d.self_device)
+            .collect();
+        Ok(devices)
     }
 
-    pub fn clear(&mut self) {
-        self.devices.clear();
+    #[allow(dead_code)]
+    pub fn clear(&mut self) -> Result<()> {
+        let mut conn = DB_POOL.get_connection()?;
+        dao::device::clear_devices(&mut conn)?;
+        Ok(())
     }
 
     /// 通过 ip 和 port 获取设备
-    pub fn get_device_by_ip_and_port(&self, ip: &str, port: u16) -> Option<&Device> {
-        self.devices.values().find(|device| {
-            device.ip.is_some()
-                && device.ip.as_ref().unwrap() == ip
-                && device.port.is_some()
-                && device.port.unwrap() == port
-        })
+    #[allow(dead_code)]
+    pub fn get_device_by_ip_and_port(&self, ip: &str, port: u16) -> Result<Option<Device>> {
+        let mut conn = DB_POOL.get_connection()?;
+        let device = dao::device::get_device_by_ip_and_port(&mut conn, ip, port as i32)?;
+        Ok(device.map(|d| d.into()))
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use chrono::Utc;
+    use dotenv::dotenv;
+    use serial_test::serial;
+    use std::env;
+    use std::sync::Once;
+    static INIT: Once = Once::new();
+    static mut DB_NAME: Option<String> = None;
 
-    #[test]
-    fn test_device_manager() {
-        let mut manager = DeviceManager::new();
-        let device = Device::new("test".to_string(), None, None, None);
-        manager.add(device.clone());
-        assert_eq!(manager.get("test"), Some(&device));
-        assert_eq!(manager.get("test1"), None);
+    fn setup() {
+        INIT.call_once(|| {
+            dotenv().ok();
+            let db_name = format!("uniclipboard_test_{}.db", uuid::Uuid::new_v4());
+            env::set_var("DATABASE_URL", &db_name);
+            DB_POOL.run_migrations().unwrap();
+
+            // 安全地存储数据库名称
+            unsafe {
+                DB_NAME = Some(db_name);
+            }
+
+            // 注册清理函数
+            std::panic::set_hook(Box::new(|_| {
+                teardown();
+            }));
+        });
     }
 
-    #[test]
-    fn test_device_eq() {
+    fn teardown() {
+        // 清空数据库
+        let mut conn = DB_POOL.get_connection().unwrap();
+        dao::device::clear_devices(&mut conn).unwrap();
+    }
+
+    fn cleanup() {
+        // 删除数据库文件
+        if let Some(db_name) = unsafe { DB_NAME.as_ref() } {
+            std::fs::remove_file(db_name).unwrap_or_else(|e| {
+                eprintln!("Failed to remove database file: {}", e);
+            });
+        }
+    }
+
+    // 在模块结束时调用 cleanup
+    #[ctor::dtor]
+    fn auto_cleanup() {
+        cleanup();
+    }
+
+    // 修改：辅助宏来包装测试函数
+    macro_rules! wrapped_test {
+        ($name:ident, $body:expr) => {
+            #[test]
+            #[serial]
+            fn $name() {
+                use std::backtrace::Backtrace;
+                use std::panic::{self, PanicHookInfo};
+
+                setup();
+                println!("Starting test: {}", stringify!($name));
+
+                let old_hook = panic::take_hook();
+                panic::set_hook(Box::new(|panic_info: &PanicHookInfo| {
+                    let backtrace = Backtrace::capture();
+                    eprintln!("Test failed: {}", stringify!($name));
+                    if let Some(location) = panic_info.location() {
+                        eprintln!(
+                            "Panic occurred in file '{}' at line {}",
+                            location.file(),
+                            location.line()
+                        );
+                    }
+                    if let Some(payload) = panic_info.payload().downcast_ref::<&str>() {
+                        eprintln!("Panic message: {}", payload);
+                    } else {
+                        eprintln!("Panic occurred without a message");
+                    }
+                    eprintln!("Backtrace:\n{}", backtrace);
+                }));
+
+                let result = std::panic::catch_unwind(|| {
+                    $body;
+                });
+
+                panic::set_hook(old_hook);
+                teardown();
+
+                if let Err(panic_info) = result {
+                    panic::resume_unwind(panic_info);
+                } else {
+                    println!("Test passed: {}", stringify!($name));
+                }
+            }
+        };
+    }
+
+    // 使用新的宏来包装测试函数
+    wrapped_test!(test_device_manager, {
+        let mut manager = DeviceManager::new();
+        let device = Device::new("test".to_string(), None, None, None);
+        manager.add(device.clone()).unwrap();
+        assert_eq!(manager.get("test").unwrap(), Some(device));
+        assert_eq!(manager.get("test1").unwrap(), None);
+        let device = manager.get("test").unwrap().unwrap();
+        assert_ne!(device.updated_at, None);
+    });
+
+    wrapped_test!(test_device_eq, {
         let device1 = Device::new("test".to_string(), None, None, None);
         let device2 = Device::new("test".to_string(), None, None, None);
         assert_eq!(device1, device2);
-    }
+    });
 
-    #[test]
-    fn test_device_manager_has() {
+    wrapped_test!(test_device_manager_has, {
         let mut manager = DeviceManager::new();
         let device = Device::new("test".to_string(), None, None, None);
-        manager.add(device.clone());
-        assert_eq!(manager.has("test"), true);
-        assert_eq!(manager.has("test1"), false);
-    }
+        manager.add(device.clone()).unwrap();
+        assert_eq!(manager.has("test").unwrap(), true);
+        assert_eq!(manager.has("test1").unwrap(), false);
+    });
+
+    // 测试 merge
+    wrapped_test!(test_merge, {
+        let mut manager = DeviceManager::new();
+        let devices = vec![
+            Device::new("test".to_string(), None, None, None),
+            Device::new("test1".to_string(), None, None, None),
+        ];
+        manager.merge(&devices).unwrap();
+        let devices_from_db = manager.get_all_devices().unwrap();
+        assert_eq!(devices_from_db.len(), 2);
+        for d in devices_from_db {
+            assert_ne!(d.updated_at, None);
+        }
+
+        let mut device = Device::new(
+            "test".to_string(),
+            Some("127.0.0.1".to_string()),
+            Some(12345),
+            None,
+        );
+        let ts = Utc::now().timestamp() as i32;
+        // 设置当前时间戳
+        device.updated_at = Some(ts);
+        let devices = vec![device];
+        manager.merge(&devices).unwrap();
+        let device = manager.get("test").unwrap().unwrap();
+        println!("Device: {:?}", device);
+        assert_eq!(device.ip, Some("127.0.0.1".to_string()));
+        assert_eq!(device.port, Some(12345));
+        assert_eq!(device.updated_at, Some(ts));
+    });
+
+    // set_self_device
+    wrapped_test!(test_set_self_device, {
+        let mut manager = DeviceManager::new();
+        let mut device = Device::new("test".to_string(), None, None, None);
+
+        println!("Adding device: {:?}", device);
+        if let Err(e) = manager.add(device.clone()) {
+            println!("Failed to add device: {}", e);
+            panic!("Failed to add device: {}", e);
+        }
+
+        device.server_port = Some(12345);
+        device.status = DeviceStatus::Online;
+        println!("Setting self device");
+        match manager.set_self_device(&device) {
+            Ok(_) => println!("Self device set successfully"),
+            Err(e) => {
+                println!("Failed to set self device: {}", e);
+                panic!("Failed to set self device: {}", e);
+            }
+        }
+
+        println!("Getting device");
+        match manager.get("test") {
+            Ok(Some(d)) => {
+                println!("Retrieved device: {:?}", d);
+                assert_eq!(d.self_device, true, "Self device flag not set correctly");
+            }
+            Ok(None) => {
+                println!("Device not found after setting");
+                panic!("Device not found after setting");
+            }
+            Err(e) => {
+                println!("Failed to get device: {}", e);
+                panic!("Failed to get device: {}", e);
+            }
+        }
+    });
+
+    // test remove
+    wrapped_test!(test_remove, {
+        let mut manager = DeviceManager::new();
+        let device = Device::new("test".to_string(), None, None, None);
+        manager.add(device.clone()).unwrap();
+        manager.remove("test").unwrap();
+        assert_eq!(manager.get("test").unwrap(), None);
+    });
+
+    // test get
+    wrapped_test!(test_get, {
+        let mut manager = DeviceManager::new();
+        let device = Device::new("test".to_string(), None, None, None);
+        manager.add(device.clone()).unwrap();
+        assert_eq!(manager.get("test").unwrap(), Some(device));
+    });
+
+    // test get_all_devices
+    wrapped_test!(test_get_all_devices, {
+        let mut manager = DeviceManager::new();
+        let device = Device::new("test".to_string(), None, None, None);
+        manager.add(device.clone()).unwrap();
+        assert_eq!(manager.get_all_devices().unwrap().len(), 1);
+    });
+
+    // test get_all_devices_except_self
+    wrapped_test!(test_get_all_devices_except_self, {
+        let mut manager = DeviceManager::new();
+        let device = Device::new("test".to_string(), None, None, None);
+        manager.add(device.clone()).unwrap();
+        manager.set_self_device(&device).unwrap();
+
+        let devices = manager.get_all_devices_except_self().unwrap();
+        assert_eq!(devices.len(), 0);
+    });
+
+    // test get_device_by_ip_and_port
+    wrapped_test!(test_get_device_by_ip_and_port, {
+        let mut manager = DeviceManager::new();
+        let device = Device::new("test".to_string(), None, None, None);
+        manager.add(device.clone()).unwrap();
+        assert_eq!(
+            manager
+                .get_device_by_ip_and_port("127.0.0.1", 12345)
+                .unwrap(),
+            None
+        );
+
+        let device = Device::new(
+            "test1".to_string(),
+            Some("127.0.0.1".to_string()),
+            Some(12346),
+            None,
+        );
+        manager.add(device.clone()).unwrap();
+        assert_eq!(
+            manager
+                .get_device_by_ip_and_port("127.0.0.1", 12346)
+                .unwrap(),
+            Some(device)
+        );
+    });
 }
-
-

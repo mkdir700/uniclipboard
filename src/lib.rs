@@ -1,14 +1,18 @@
 mod cli;
 pub mod clipboard;
 pub mod config;
+pub mod db;
 pub mod device;
 pub mod encrypt;
 pub mod errors;
 pub mod file_metadata;
 pub mod key_mouse_monitor;
 pub mod message;
+pub mod migrations;
+pub mod models;
 pub mod network;
 pub mod remote_sync;
+pub mod schema;
 pub mod uni_clipboard;
 pub mod utils;
 pub mod web;

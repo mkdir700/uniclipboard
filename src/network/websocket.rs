@@ -241,9 +241,7 @@ impl WebSocketClient {
             .lock()
             .map_err(|_| anyhow::anyhow!("Failed to lock device manager"))?
             .get_all_devices()
-            .into_iter()
-            .cloned()
-            .collect::<Vec<_>>();
+            .map_err(|_| anyhow::anyhow!("Failed to get all devices"))?;
 
         let web_socket_message = WebSocketMessage::DeviceListSync(DeviceListData {
             devices,

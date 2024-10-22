@@ -446,7 +446,7 @@ impl WebSocketMessageHandler {
                 .lock()
                 .map_err(|_| anyhow::anyhow!("Failed to lock device manager"))
                 .unwrap()
-                .merge_and_get_new(&data.devices)
+                .merge(&data.devices)
         };
 
         // 追加当前设备 ID到 replay_device_ids
@@ -475,11 +475,14 @@ impl WebSocketMessageHandler {
                 .lock()
                 .map_err(|_| anyhow::anyhow!("Failed to lock device manager"))
             {
-                Ok(device_manager) => device_manager
-                    .get_all_devices()
-                    .into_iter()
-                    .cloned()
-                    .collect::<Vec<_>>(),
+                Ok(device_manager) => {
+                    if let Ok(devices) = device_manager.get_all_devices() {
+                        devices
+                    } else {
+                        error!("Failed to get all devices");
+                        return;
+                    }
+                }
                 Err(e) => {
                     error!("Failed to lock device manager: {}", e);
                     return;
@@ -592,10 +595,10 @@ mod tests {
         let guard = device_manager.try_lock();
         if let Ok(mut guard) = guard {
             let devices = guard.get_all_devices_except_self();
-            let len = devices.len();
+            let len = devices.unwrap().len();
             assert_eq!(len, 3);
             guard.clear();
-            assert_eq!(guard.get_all_devices_except_self().len(), 0);
+            assert_eq!(guard.get_all_devices_except_self().unwrap().len(), 0);
         } else {
             assert!(false);
         }
