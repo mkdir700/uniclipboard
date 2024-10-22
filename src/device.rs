@@ -9,7 +9,6 @@ use serde::{Deserialize, Serialize};
 use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::fmt::{self, Display};
-use std::sync::Mutex;
 use tokio::sync::broadcast;
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
@@ -76,10 +75,10 @@ pub struct Device {
     pub updated_at: Option<i32>,
 }
 
+#[derive(Clone)]
 pub struct DeviceManager {}
 
-pub static GLOBAL_DEVICE_MANAGER: Lazy<Mutex<DeviceManager>> =
-    Lazy::new(|| Mutex::new(DeviceManager::new()));
+pub static GLOBAL_DEVICE_MANAGER: Lazy<DeviceManager> = Lazy::new(|| DeviceManager::new());
 
 pub static NEW_DEVICE_BROADCASTER: Lazy<broadcast::Sender<Device>> = Lazy::new(|| {
     let (sender, _) = broadcast::channel(20);
@@ -87,7 +86,7 @@ pub static NEW_DEVICE_BROADCASTER: Lazy<broadcast::Sender<Device>> = Lazy::new(|
 });
 
 // 可选：添加一个便捷函数来获取 DeviceManager 的引用
-pub fn get_device_manager() -> &'static Mutex<DeviceManager> {
+pub fn get_device_manager() -> &'static DeviceManager {
     &GLOBAL_DEVICE_MANAGER
 }
 
@@ -184,7 +183,7 @@ impl DeviceManager {
         Self {}
     }
 
-    pub fn set_self_device(&mut self, device: &Device) -> Result<()> {
+    pub fn set_self_device(&self, device: &Device) -> Result<()> {
         let mut conn = DB_POOL.get_connection()?;
         let mut db_device = DbDevice::from(device);
         if dao::device::is_exist(&mut conn, &db_device.id)? {
@@ -198,7 +197,7 @@ impl DeviceManager {
     }
 
     /// 添加设备，如果设备已存在，则更新设备
-    pub fn add(&mut self, device: Device) -> Result<()> {
+    pub fn add(&self, device: Device) -> Result<()> {
         let mut conn = DB_POOL.get_connection()?;
         let mut db_device = DbDevice::from(&device);
         db_device.updated_at = Utc::now().timestamp() as i32;
@@ -215,7 +214,7 @@ impl DeviceManager {
     /// 合并
     /// 如果设备已存在，判断设备的时间戳，如果时间戳大于当前设备的时间戳，则更新设备
     /// 被新增的设备将通过广播通知
-    pub fn merge(&mut self, devices: &Vec<Device>) -> Result<()> {
+    pub fn merge(&self, devices: &Vec<Device>) -> Result<()> {
         let mut conn = DB_POOL.get_connection()?;
 
         let exist_devices: HashMap<String, DbDevice> = dao::device::get_all_devices(&mut conn)?
@@ -262,6 +261,8 @@ impl DeviceManager {
         Ok(())
     }
 
+    /// 获取离线设备
+    #[allow(dead_code)]
     pub fn get_offline_devices(&self) -> Result<Vec<Device>> {
         let devices = self.get_all_devices()?;
         let offline_devices = devices
@@ -271,7 +272,7 @@ impl DeviceManager {
         Ok(offline_devices)
     }
 
-    pub fn remove(&mut self, device_id: &str) -> Result<()> {
+    pub fn remove(&self, device_id: &str) -> Result<()> {
         let mut conn = DB_POOL.get_connection()?;
         dao::device::delete_device(&mut conn, device_id)?;
         Ok(())

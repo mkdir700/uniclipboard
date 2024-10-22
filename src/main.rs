@@ -77,23 +77,16 @@ async fn main() -> Result<()> {
     }
     config.save(None)?;
 
-    let config_dir = get_config_dir()?;
-    env::set_var(
-        "DATABASE_URL",
-        config_dir.join("uniclipboard.db").to_str().unwrap(),
-    );
-
-    DB_POOL.run_migrations()?;
     {
-        let mut mutex = get_device_manager().lock().unwrap();
+        let manager = get_device_manager();
         let device = Device::new(
             config.device_id.clone(),
             Some(local_ip.clone()),
             None,
             Some(config.webserver_port.unwrap()),
         );
-        mutex.add(device.clone())?;
-        mutex.set_self_device(&device)?;
+        manager.add(device.clone())?;
+        manager.set_self_device(&device)?;
     }
 
     // 暂时禁用

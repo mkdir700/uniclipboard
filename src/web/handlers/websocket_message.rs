@@ -5,6 +5,7 @@ use std::sync::Arc;
 use crate::config::CONFIG;
 use crate::device::get_device_manager;
 use crate::device::Device;
+use crate::device::GLOBAL_DEVICE_MANAGER;
 use crate::message::DeviceSyncInfo;
 use crate::message::RegisterDeviceMessage;
 use crate::message::{ClipboardSyncMessage, DevicesSyncMessage, WebSocketMessage};
@@ -398,14 +399,8 @@ impl WebSocketMessageHandler {
     }
 
     pub async fn handle_unregister(&self, device_id: String) {
-        let device_manager = get_device_manager();
-        match device_manager.lock() {
-            Ok(mut device_manager) => {
-                device_manager.remove(&device_id);
-            }
-            Err(e) => {
-                error!("Failed to lock device manager: {}", e);
-            }
+        if let Err(e) = get_device_manager().remove(&device_id) {
+            error!("Failed to remove device: {}", e);
         }
     }
 
@@ -458,14 +453,9 @@ impl WebSocketMessageHandler {
             })
             .collect();
 
-        let _ = {
-            let device_manager = get_device_manager();
-            device_manager
-                .lock()
-                .map_err(|_| anyhow::anyhow!("Failed to lock device manager"))
-                .unwrap()
-                .merge(&devices)
-        };
+        if let Err(e) = GLOBAL_DEVICE_MANAGER.merge(&devices) {
+            error!("Failed to merge devices: {}", e);
+        }
 
         // 追加当前设备 ID到 replay_device_ids
         let device_id = {
@@ -489,22 +479,11 @@ impl WebSocketMessageHandler {
         let excludes = data.replay_device_ids.clone();
 
         let devices = {
-            match get_device_manager()
-                .lock()
-                .map_err(|_| anyhow::anyhow!("Failed to lock device manager"))
-            {
-                Ok(device_manager) => {
-                    if let Ok(devices) = device_manager.get_all_devices() {
-                        devices
-                    } else {
-                        error!("Failed to get all devices");
-                        return;
-                    }
-                }
-                Err(e) => {
-                    error!("Failed to lock device manager: {}", e);
-                    return;
-                }
+            if let Ok(devices) = get_device_manager().get_all_devices() {
+                devices
+            } else {
+                error!("Failed to get all devices");
+                return;
             }
         };
 

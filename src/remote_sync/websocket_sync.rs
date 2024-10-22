@@ -282,10 +282,7 @@ impl RemoteClipboardSync for WebSocketSync {
     async fn start(&self) -> Result<()> {
         info!("Start to connect to devices");
         // 获取设备管理器的锁
-        let device_manager = get_device_manager();
-        let devices = device_manager
-            .lock()
-            .map_err(|_| anyhow::anyhow!("Failed to lock device manager"))?
+        let devices = get_device_manager()
             .get_all_devices_except_self()
             .map_err(|_| anyhow::anyhow!("Failed to get all devices"))?;
 

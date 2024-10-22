@@ -237,12 +237,9 @@ impl WebSocketClient {
     /// 向其他设备同步当前设备已知的设备列表
     pub async fn sync_device_list(&self) -> Result<()> {
         let device_id = CONFIG.read().unwrap().device_id.clone();
-        let device_manager = get_device_manager();
-        let devices = device_manager
-            .lock()
-            .map_err(|_| anyhow::anyhow!("Failed to lock device manager"))?
-            .get_all_devices()
-            .map_err(|_| anyhow::anyhow!("Failed to get all devices"))?;
+        let devices = get_device_manager().get_all_devices().map_err(|_| {
+            anyhow::anyhow!("Failed to get all devices")
+        })?;
 
         let web_socket_message = WebSocketMessage::DeviceListSync(DevicesSyncMessage {
             devices: devices.iter().map(|d| DeviceSyncInfo::from(d)).collect(),
