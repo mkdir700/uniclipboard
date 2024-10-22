@@ -29,6 +29,10 @@ impl DbManager {
         Ok(DbManager { pool })
     }
 
+    pub fn init(&self) -> Result<()> {
+        self.run_migrations()
+    }
+
     // 运行数据库迁移
     pub fn run_migrations(&self) -> Result<()> {
         let mut conn = self
