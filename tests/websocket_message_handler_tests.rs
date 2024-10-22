@@ -7,7 +7,7 @@ use tokio::{self, time::timeout};
 use uniclipboard::{
     device::Device,
     get_device_manager,
-    message::{ClipboardSyncMessage, DeviceListData, Payload, WebSocketMessage},
+    message::{ClipboardSyncMessage, DeviceSyncInfo, DevicesSyncMessage, Payload, WebSocketMessage},
     network::WebSocketClient,
     remote_sync::WebSocketSync,
     web::WebServer,
@@ -85,8 +85,11 @@ async fn test_websocket_broadcast() {
     let websocket_message_handler_clone = Arc::clone(&w.websocket_message_handler);
     websocket_message_handler_clone
         .broadcast(
-            &WebSocketMessage::DeviceListSync(DeviceListData {
-                devices,
+            &WebSocketMessage::DeviceListSync(DevicesSyncMessage {
+                devices: devices
+                    .iter()
+                    .map(|d| DeviceSyncInfo::from(d))
+                    .collect(),
                 replay_device_ids: vec![],
             }),
             &None,

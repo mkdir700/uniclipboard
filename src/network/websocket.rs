@@ -2,7 +2,8 @@ use crate::config::CONFIG;
 use crate::device::get_device_manager;
 use crate::device::Device;
 use crate::message::ClipboardSyncMessage;
-use crate::message::DeviceListData;
+use crate::message::DeviceSyncInfo;
+use crate::message::DevicesSyncMessage;
 use crate::message::RegisterDeviceMessage;
 use crate::message::WebSocketMessage;
 use anyhow::Result;
@@ -243,8 +244,8 @@ impl WebSocketClient {
             .get_all_devices()
             .map_err(|_| anyhow::anyhow!("Failed to get all devices"))?;
 
-        let web_socket_message = WebSocketMessage::DeviceListSync(DeviceListData {
-            devices,
+        let web_socket_message = WebSocketMessage::DeviceListSync(DevicesSyncMessage {
+            devices: devices.iter().map(|d| DeviceSyncInfo::from(d)).collect(),
             replay_device_ids: vec![device_id],
         });
         self.send_raw(&web_socket_message).await?;

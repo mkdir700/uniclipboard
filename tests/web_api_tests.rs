@@ -7,7 +7,7 @@ use tokio::{self, time::timeout};
 
 use uniclipboard::{
     device::Device,
-    message::{ClipboardSyncMessage, DeviceListData, Payload, RegisterDeviceMessage, WebSocketMessage},
+    message::{ClipboardSyncMessage, DeviceSyncInfo, DevicesSyncMessage, Payload, RegisterDeviceMessage, WebSocketMessage},
     network::WebSocketClient,
     web::{handlers::websocket_message::MessageSource, WebServer},
     Config, WebSocketHandler, WebSocketMessageHandler, CONFIG,
@@ -97,8 +97,8 @@ async fn test_get_device_list() {
 
     w.websocket_message_handler
         .handle_device_list_sync(
-            DeviceListData {
-                devices: vec![device],
+            DevicesSyncMessage {
+                devices: vec![DeviceSyncInfo::from(&device)],
                 replay_device_ids: vec![],
             },
             MessageSource::IpPort(SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 8114)),
