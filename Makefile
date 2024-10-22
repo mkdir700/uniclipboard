@@ -14,6 +14,15 @@ coverage:
 icoverage:
 	cargo tarpaulin --config tarpaulin.toml
 
+generate-migrations:
+	diesel migration generate
+
+db-upgrade:
+	diesel migration run && diesel print-schema > src/schema.rs
+
+db-downgrade:
+	diesel migration redo
+
 build-all:
 	make build-linux
 	make build-windows
