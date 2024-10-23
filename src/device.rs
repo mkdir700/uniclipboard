@@ -334,6 +334,7 @@ mod tests {
     static INIT: Once = Once::new();
     static mut DB_NAME: Option<String> = None;
 
+    #[ctor::ctor]
     fn setup() {
         INIT.call_once(|| {
             dotenv().ok();
@@ -359,11 +360,12 @@ mod tests {
         dao::device::clear_devices(&mut conn).unwrap();
     }
 
+    #[ctor::dtor]
     fn cleanup() {
         // 删除数据库文件
         if let Some(db_name) = unsafe { DB_NAME.as_ref() } {
             std::fs::remove_file(db_name).unwrap_or_else(|e| {
-                eprintln!("Failed to remove database file: {}", e);
+                println!("Failed to remove database file: {}", e);
             });
         }
     }
@@ -374,55 +376,9 @@ mod tests {
         cleanup();
     }
 
-    // 修改：辅助宏来包装测试函数
-    macro_rules! wrapped_test {
-        ($name:ident, $body:expr) => {
-            #[test]
-            #[serial]
-            fn $name() {
-                use std::backtrace::Backtrace;
-                use std::panic::{self, PanicHookInfo};
-
-                setup();
-                println!("Starting test: {}", stringify!($name));
-
-                let old_hook = panic::take_hook();
-                panic::set_hook(Box::new(|panic_info: &PanicHookInfo| {
-                    let backtrace = Backtrace::capture();
-                    eprintln!("Test failed: {}", stringify!($name));
-                    if let Some(location) = panic_info.location() {
-                        eprintln!(
-                            "Panic occurred in file '{}' at line {}",
-                            location.file(),
-                            location.line()
-                        );
-                    }
-                    if let Some(payload) = panic_info.payload().downcast_ref::<&str>() {
-                        eprintln!("Panic message: {}", payload);
-                    } else {
-                        eprintln!("Panic occurred without a message");
-                    }
-                    eprintln!("Backtrace:\n{}", backtrace);
-                }));
-
-                let result = std::panic::catch_unwind(|| {
-                    $body;
-                });
-
-                panic::set_hook(old_hook);
-                teardown();
-
-                if let Err(panic_info) = result {
-                    panic::resume_unwind(panic_info);
-                } else {
-                    println!("Test passed: {}", stringify!($name));
-                }
-            }
-        };
-    }
-
-    // 使用新的宏来包装测试函数
-    wrapped_test!(test_device_manager, {
+    #[test]
+    #[serial]
+    fn test_device_manager() {
         let manager = DeviceManager::new();
         let device = Device::new("test".to_string(), None, None, None);
         manager.add(device.clone()).unwrap();
@@ -430,24 +386,32 @@ mod tests {
         assert_eq!(manager.get("test1").unwrap(), None);
         let device = manager.get("test").unwrap().unwrap();
         assert_ne!(device.updated_at, None);
-    });
+        teardown()
+    }
 
-    wrapped_test!(test_device_eq, {
+    #[test]
+    #[serial]
+    fn test_device_eq() {
         let device1 = Device::new("test".to_string(), None, None, None);
         let device2 = Device::new("test".to_string(), None, None, None);
         assert_eq!(device1, device2);
-    });
+        teardown()
+    }
 
-    wrapped_test!(test_device_manager_has, {
+    #[test]
+    #[serial]
+    fn test_device_manager_has() {
         let manager = DeviceManager::new();
         let device = Device::new("test".to_string(), None, None, None);
         manager.add(device.clone()).unwrap();
         assert_eq!(manager.has("test").unwrap(), true);
         assert_eq!(manager.has("test1").unwrap(), false);
-    });
+        teardown()
+    }
 
-    // 测试 merge
-    wrapped_test!(test_merge, {
+    #[test]
+    #[serial]
+    fn test_merge() {
         let manager = DeviceManager::new();
         let devices = vec![
             Device::new("test".to_string(), None, None, None),
@@ -476,10 +440,12 @@ mod tests {
         assert_eq!(device.ip, Some("127.0.0.1".to_string()));
         assert_eq!(device.port, Some(12345));
         assert_eq!(device.updated_at, Some(ts));
-    });
+        teardown()
+    }
 
-    // set_self_device
-    wrapped_test!(test_set_self_device, {
+    #[test]
+    #[serial]
+    fn test_set_self_device() {
         let manager = DeviceManager::new();
         let mut device = Device::new("test".to_string(), None, None, None);
 
@@ -515,35 +481,43 @@ mod tests {
                 panic!("Failed to get device: {}", e);
             }
         }
-    });
+        teardown()
+    }
 
-    // test remove
-    wrapped_test!(test_remove, {
+    #[test]
+    #[serial]
+    fn test_remove() {
         let manager = DeviceManager::new();
         let device = Device::new("test".to_string(), None, None, None);
         manager.add(device.clone()).unwrap();
         manager.remove("test").unwrap();
         assert_eq!(manager.get("test").unwrap(), None);
-    });
+        teardown()
+    }
 
-    // test get
-    wrapped_test!(test_get, {
+    #[test]
+    #[serial]
+    fn test_get() {
         let manager = DeviceManager::new();
         let device = Device::new("test".to_string(), None, None, None);
         manager.add(device.clone()).unwrap();
         assert_eq!(manager.get("test").unwrap(), Some(device));
-    });
+        teardown()
+    }
 
-    // test get_all_devices
-    wrapped_test!(test_get_all_devices, {
+    #[test]
+    #[serial]
+    fn test_get_all_devices() {
         let manager = DeviceManager::new();
         let device = Device::new("test".to_string(), None, None, None);
         manager.add(device.clone()).unwrap();
         assert_eq!(manager.get_all_devices().unwrap().len(), 1);
-    });
+        teardown()
+    }
 
-    // test get_all_devices_except_self
-    wrapped_test!(test_get_all_devices_except_self, {
+    #[test]
+    #[serial]
+    fn test_get_all_devices_except_self() {
         let manager = DeviceManager::new();
         let device = Device::new("test".to_string(), None, None, None);
         manager.add(device.clone()).unwrap();
@@ -551,10 +525,12 @@ mod tests {
 
         let devices = manager.get_all_devices_except_self().unwrap();
         assert_eq!(devices.len(), 0);
-    });
+        teardown()
+    }
 
-    // test get_device_by_ip_and_port
-    wrapped_test!(test_get_device_by_ip_and_port, {
+    #[test]
+    #[serial]
+    fn test_get_device_by_ip_and_port() {
         let manager = DeviceManager::new();
         let device = Device::new("test".to_string(), None, None, None);
         manager.add(device.clone()).unwrap();
@@ -578,5 +554,6 @@ mod tests {
                 .unwrap(),
             Some(device)
         );
-    });
+        teardown()
+    }
 }

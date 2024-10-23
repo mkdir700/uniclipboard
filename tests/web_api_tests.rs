@@ -36,7 +36,7 @@ mod tests {
     fn teardown() {
         // 删除测试数据库文件
         if let Err(e) = fs::remove_file("uniclipboard_tests.db") {
-            eprintln!("清理测试数据库时出错: {}", e);
+            println!("清理测试数据库时出错: {}", e);
         }
     }
 
