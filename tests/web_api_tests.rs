@@ -1,5 +1,3 @@
-use bytes::Bytes;
-use chrono::Utc;
 use reqwest_dav::re_exports::reqwest::{self, StatusCode};
 use serial_test::serial;
 use std::{
@@ -7,15 +5,10 @@ use std::{
     sync::Arc,
     time::Duration,
 };
-use tokio::{self, time::timeout};
 
 use uniclipboard::{
     device::Device,
-    message::{
-        ClipboardSyncMessage, DeviceSyncInfo, DevicesSyncMessage, Payload, RegisterDeviceMessage,
-        WebSocketMessage,
-    },
-    network::WebSocketClient,
+    message::{DeviceSyncInfo, DevicesSyncMessage, RegisterDeviceMessage},
     web::{handlers::websocket_message::MessageSource, WebServer},
     Config, WebSocketHandler, WebSocketMessageHandler, CONFIG,
 };
