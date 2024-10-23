@@ -6,8 +6,11 @@ use tokio::select;
 use tokio::signal::ctrl_c;
 use tokio::sync::{mpsc, RwLock};
 use tokio::time::sleep;
+use std::env;
 
 use crate::clipboard::LocalClipboardTrait;
+use crate::config::get_config_dir;
+use crate::db::DB_POOL;
 use crate::key_mouse_monitor::KeyMouseMonitorTrait;
 use crate::message::{ClipboardSyncMessage, Payload};
 use crate::remote_sync::RemoteSyncManagerTrait;
@@ -59,6 +62,18 @@ impl UniClipboard {
             anyhow::bail!("Already running");
         }
         *is_running = true;
+
+        // 初始化数据库
+        // 如果环境变量中没有设置 DATABASE_URL，则设置默认的配置目录
+        if env::var("DATABASE_URL").is_err() {
+            let config_dir = get_config_dir()?;
+            env::set_var(
+                "DATABASE_URL",
+                config_dir.join("uniclipboard.db").to_str().unwrap(),
+            );
+        }
+
+        DB_POOL.init()?;
 
         // 启动本地剪切板监听
         let clipboard_receiver = self.clipboard.start_monitoring().await?;
@@ -333,8 +348,28 @@ mod tests {
     use anyhow::Result;
     use async_trait::async_trait;
     use bytes::Bytes;
-    use std::{net::SocketAddr, sync::Arc};
+    use serial_test::serial;
+    use std::{net::SocketAddr, sync::Arc, env};
     use tokio::sync::Mutex;
+    use std::fs;
+
+    fn setup_test_env() {
+        env::set_var("DATABASE_URL", "uniclipboard_tests.db");
+    }
+
+    #[ctor::ctor]
+    fn setup() {
+        setup_test_env();
+    }
+
+    // 这个函数会在模块中的所有测试运行之后执行
+    #[ctor::dtor]
+    fn teardown() {
+        // 删除测试数据库文件
+        if let Err(e) = fs::remove_file("uniclipboard_tests.db") {
+            println!("清理测试数据库时出错: {}", e);
+        }
+    }
 
     // 模拟本地剪贴板
     struct MockLocalClipboard {
@@ -431,6 +466,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[serial]
     async fn test_uni_clipboard_creation() {
         let clipboard = Arc::new(MockLocalClipboard {
             content: Arc::new(Mutex::new(None)),
@@ -461,6 +497,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[serial]
     async fn test_uni_clipboard_sync() {
         let clipboard = Arc::new(MockLocalClipboard {
             content: Arc::new(Mutex::new(None)),
@@ -506,6 +543,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[serial]
     async fn test_uni_clipboard_pause_resume() {
         let clipboard = Arc::new(MockLocalClipboard {
             content: Arc::new(Mutex::new(None)),

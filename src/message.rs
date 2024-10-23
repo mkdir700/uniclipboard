@@ -1,4 +1,3 @@
-use crate::device::Device;
 use anyhow::Result;
 use base64::Engine;
 use bytes::Bytes;
@@ -9,6 +8,8 @@ use std::fmt;
 use tokio_tungstenite::tungstenite::Message;
 use twox_hash::xxh3::hash64;
 
+use crate::device::Device;
+use crate::device::DeviceStatus;
 // pub enum FileType {
 //     Text,
 //     RichText,
@@ -259,7 +260,7 @@ impl RegisterDeviceMessage {
 #[serde(tag = "type", content = "data")]
 pub enum WebSocketMessage {
     ClipboardSync(ClipboardSyncMessage),
-    DeviceListSync(DeviceListData),
+    DeviceListSync(DevicesSyncMessage),
     Register(RegisterDeviceMessage),
     Unregister(String),
 }
@@ -274,11 +275,49 @@ pub struct ClipboardSyncMessage {
     pub timestamp: u64,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DeviceSyncInfo {
+    /// 设备ID
+    pub id: String,
+    /// 设备IP
+    pub ip: Option<String>,
+    /// 连接端口
+    pub port: Option<u16>,
+    /// 设备服务端口
+    pub server_port: Option<u16>,
+    /// 设备状态
+    pub status: DeviceStatus,
+    /// 设备更新时间(时间戳)
+    pub updated_at: Option<i32>,
+}
+
+impl From<&Device> for DeviceSyncInfo {
+    fn from(device: &Device) -> Self {
+        Self {
+            id: device.id.clone(),
+            ip: device.ip.clone(),
+            port: device.port,
+            server_port: device.server_port,
+            status: device.status,
+            updated_at: device.updated_at,
+        }
+    }
+}
+
 #[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct DeviceListData {
-    pub devices: Vec<Device>,
+pub struct DevicesSyncMessage {
+    pub devices: Vec<DeviceSyncInfo>,
     // 经转发过的设备ID列表
     pub replay_device_ids: Vec<String>,
+}
+
+impl DevicesSyncMessage {
+    pub fn new(devices: Vec<DeviceSyncInfo>, replay_device_ids: Vec<String>) -> Self {
+        Self {
+            devices,
+            replay_device_ids,
+        }
+    }
 }
 
 impl WebSocketMessage {

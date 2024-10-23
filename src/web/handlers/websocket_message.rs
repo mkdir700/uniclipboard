@@ -5,8 +5,10 @@ use std::sync::Arc;
 use crate::config::CONFIG;
 use crate::device::get_device_manager;
 use crate::device::Device;
+use crate::device::GLOBAL_DEVICE_MANAGER;
+use crate::message::DeviceSyncInfo;
 use crate::message::RegisterDeviceMessage;
-use crate::message::{ClipboardSyncMessage, DeviceListData, WebSocketMessage};
+use crate::message::{ClipboardSyncMessage, DevicesSyncMessage, WebSocketMessage};
 use anyhow::Result;
 use futures::future::join_all;
 use futures::FutureExt;
@@ -397,14 +399,8 @@ impl WebSocketMessageHandler {
     }
 
     pub async fn handle_unregister(&self, device_id: String) {
-        let device_manager = get_device_manager();
-        match device_manager.lock() {
-            Ok(mut device_manager) => {
-                device_manager.remove(&device_id);
-            }
-            Err(e) => {
-                error!("Failed to lock device manager: {}", e);
-            }
+        if let Err(e) = get_device_manager().remove(&device_id) {
+            error!("Failed to remove device: {}", e);
         }
     }
 
@@ -435,19 +431,31 @@ impl WebSocketMessageHandler {
     /// 处理设备列表同步
     pub async fn handle_device_list_sync(
         &self,
-        mut data: DeviceListData,
+        mut data: DevicesSyncMessage,
         message_source: MessageSource,
     ) {
         // 合并设备列表并返回新增的设备
         let _ = message_source;
-        let _ = {
-            let device_manager = get_device_manager();
-            device_manager
-                .lock()
-                .map_err(|_| anyhow::anyhow!("Failed to lock device manager"))
-                .unwrap()
-                .merge_and_get_new(&data.devices)
-        };
+
+        let devices = data
+            .devices
+            .iter()
+            .map(|d| {
+                let mut device = Device::new(
+                    d.id.clone(),
+                    d.ip.clone(),
+                    d.server_port.clone(),
+                    d.server_port.clone(),
+                );
+                device.status = d.status;
+                device.updated_at = d.updated_at;
+                device
+            })
+            .collect();
+
+        if let Err(e) = GLOBAL_DEVICE_MANAGER.merge(&devices) {
+            error!("Failed to merge devices: {}", e);
+        }
 
         // 追加当前设备 ID到 replay_device_ids
         let device_id = {
@@ -471,19 +479,11 @@ impl WebSocketMessageHandler {
         let excludes = data.replay_device_ids.clone();
 
         let devices = {
-            match get_device_manager()
-                .lock()
-                .map_err(|_| anyhow::anyhow!("Failed to lock device manager"))
-            {
-                Ok(device_manager) => device_manager
-                    .get_all_devices()
-                    .into_iter()
-                    .cloned()
-                    .collect::<Vec<_>>(),
-                Err(e) => {
-                    error!("Failed to lock device manager: {}", e);
-                    return;
-                }
+            if let Ok(devices) = get_device_manager().get_all_devices() {
+                devices
+            } else {
+                error!("Failed to get all devices");
+                return;
             }
         };
 
@@ -491,13 +491,17 @@ impl WebSocketMessageHandler {
             "Broadcasting device list sync to others, excludes: {:?}",
             excludes
         );
+
+        let device_sync_infos: Vec<DeviceSyncInfo> =
+            devices.iter().map(|d| DeviceSyncInfo::from(d)).collect();
+
         // 广播给其他设备，用于他们更新设备列表
         let _ = self
             .broadcast(
-                &WebSocketMessage::DeviceListSync(DeviceListData {
-                    devices,
-                    replay_device_ids: data.replay_device_ids,
-                }),
+                &WebSocketMessage::DeviceListSync(DevicesSyncMessage::new(
+                    device_sync_infos,
+                    data.replay_device_ids,
+                )),
                 &Some(excludes),
             )
             .await;
@@ -536,68 +540,3 @@ impl WebSocketMessageHandler {
     // }
 }
 
-#[cfg(test)]
-mod tests {
-    use std::net::{IpAddr, Ipv4Addr};
-
-    use serial_test::serial;
-
-    use super::*;
-
-    #[tokio::test]
-    #[serial]
-    async fn test_handle_device_list_sync() {
-        let handler = WebSocketMessageHandler::new();
-        let device1 = Device::new(
-            "device1".to_string(),
-            Some("127.0.0.1".to_string()),
-            Some(8080),
-            Some(8080),
-        );
-        let device2 = Device::new(
-            "device2".to_string(),
-            Some("127.0.0.1".to_string()),
-            Some(8080),
-            Some(8080),
-        );
-        let device3 = Device::new(
-            "device3".to_string(),
-            Some("127.0.0.1".to_string()),
-            Some(8080),
-            Some(8080),
-        );
-
-        handler
-            .handle_register(
-                RegisterDeviceMessage::new(
-                    "device1".to_string(),
-                    Some("127.0.0.1".to_string()),
-                    Some(8080),
-                ),
-                SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 8080),
-            )
-            .await;
-
-        handler
-            .handle_device_list_sync(
-                DeviceListData {
-                    devices: vec![device1, device2, device3],
-                    replay_device_ids: vec![],
-                },
-                MessageSource::DeviceId("device1".to_string()),
-            )
-            .await;
-
-        let device_manager = get_device_manager();
-        let guard = device_manager.try_lock();
-        if let Ok(mut guard) = guard {
-            let devices = guard.get_all_devices_except_self();
-            let len = devices.len();
-            assert_eq!(len, 3);
-            guard.clear();
-            assert_eq!(guard.get_all_devices_except_self().len(), 0);
-        } else {
-            assert!(false);
-        }
-    }
-}

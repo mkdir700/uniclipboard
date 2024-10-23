@@ -147,6 +147,19 @@ pub fn get_config_path() -> Result<PathBuf> {
     Ok(config_dir.join("config.toml"))
 }
 
+/// 获取配置目录
+///
+/// Returns:
+///
+/// - 如果获取到配置目录，则返回该目录
+/// - 如果获取不到配置目录，则返回错误
+pub fn get_config_dir() -> Result<PathBuf> {
+    let config_dir = dirs::config_dir()
+        .ok_or_else(|| anyhow::anyhow!("Could not find config directory"))?
+        .join("uniclipboard");
+    Ok(config_dir)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

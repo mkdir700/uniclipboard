@@ -2,7 +2,8 @@ use crate::config::CONFIG;
 use crate::device::get_device_manager;
 use crate::device::Device;
 use crate::message::ClipboardSyncMessage;
-use crate::message::DeviceListData;
+use crate::message::DeviceSyncInfo;
+use crate::message::DevicesSyncMessage;
 use crate::message::RegisterDeviceMessage;
 use crate::message::WebSocketMessage;
 use anyhow::Result;
@@ -236,17 +237,12 @@ impl WebSocketClient {
     /// 向其他设备同步当前设备已知的设备列表
     pub async fn sync_device_list(&self) -> Result<()> {
         let device_id = CONFIG.read().unwrap().device_id.clone();
-        let device_manager = get_device_manager();
-        let devices = device_manager
-            .lock()
-            .map_err(|_| anyhow::anyhow!("Failed to lock device manager"))?
-            .get_all_devices()
-            .into_iter()
-            .cloned()
-            .collect::<Vec<_>>();
+        let devices = get_device_manager().get_all_devices().map_err(|_| {
+            anyhow::anyhow!("Failed to get all devices")
+        })?;
 
-        let web_socket_message = WebSocketMessage::DeviceListSync(DeviceListData {
-            devices,
+        let web_socket_message = WebSocketMessage::DeviceListSync(DevicesSyncMessage {
+            devices: devices.iter().map(|d| DeviceSyncInfo::from(d)).collect(),
             replay_device_ids: vec![device_id],
         });
         self.send_raw(&web_socket_message).await?;

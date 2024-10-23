@@ -1,6 +1,7 @@
 mod cli;
 mod clipboard;
 mod config;
+mod db;
 mod device;
 mod encrypt;
 mod errors;
@@ -8,8 +9,11 @@ mod file_metadata;
 mod key_mouse_monitor;
 mod logger;
 mod message;
+mod migrations;
+mod models;
 mod network;
 mod remote_sync;
+mod schema;
 mod uni_clipboard;
 mod utils;
 mod web;
@@ -17,6 +21,7 @@ use anyhow::Result;
 use console::style;
 use device::{get_device_manager, Device};
 use log::{error, info};
+use std::env;
 use std::sync::Arc;
 use uni_clipboard::UniClipboardBuilder;
 use utils::get_local_ip;
@@ -71,15 +76,15 @@ async fn main() -> Result<()> {
     config.save(None)?;
 
     {
-        let mut mutex = get_device_manager().lock().unwrap();
+        let manager = get_device_manager();
         let device = Device::new(
             config.device_id.clone(),
             Some(local_ip.clone()),
             None,
             Some(config.webserver_port.unwrap()),
         );
-        mutex.set_self_device(&device);
-        mutex.add(device);
+        manager.add(device.clone())?;
+        manager.set_self_device(&device)?;
     }
 
     // 暂时禁用

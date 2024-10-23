@@ -96,7 +96,10 @@ impl WebSocketSync {
     async fn listen_new_devices(&self) {
         let mut new_devices_rx = subscribe_new_devices();
         let self_clone = Arc::new(self.clone());
-        let peer_device_addr = self_clone.peer_device_addr.clone().unwrap_or("".to_string());
+        let peer_device_addr = self_clone
+            .peer_device_addr
+            .clone()
+            .unwrap_or("".to_string());
         let peer_device_port = self_clone.peer_device_port.clone().unwrap_or(0);
 
         tokio::spawn(async move {
@@ -111,7 +114,10 @@ impl WebSocketSync {
                 // 连接设备前，检查两个设备是否已经连接
                 // 1. 检查 outgoning 列表中是否存在相同的 device_id
                 // 2. 检查 incoming 列表中是否存在相同的 ip + port
-                let is_connected = self_clone.websocket_message_handler.is_connected(&device).await;
+                let is_connected = self_clone
+                    .websocket_message_handler
+                    .is_connected(&device)
+                    .await;
                 if is_connected {
                     info!("Device {} is already connected, skip...", device);
                     continue;
@@ -276,14 +282,9 @@ impl RemoteClipboardSync for WebSocketSync {
     async fn start(&self) -> Result<()> {
         info!("Start to connect to devices");
         // 获取设备管理器的锁
-        let device_manager = get_device_manager();
-        let devices = device_manager
-            .lock()
-            .map_err(|_| anyhow::anyhow!("Failed to lock device manager"))?
+        let devices = get_device_manager()
             .get_all_devices_except_self()
-            .into_iter()
-            .cloned()
-            .collect::<Vec<_>>();
+            .map_err(|_| anyhow::anyhow!("Failed to get all devices"))?;
 
         // 如果 devices 为空，则尝试从配置中获取对等设备
         if devices.is_empty() && self.peer_device_connected.read().await.is_some() {
