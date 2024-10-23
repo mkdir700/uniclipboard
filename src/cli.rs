@@ -51,26 +51,12 @@ pub fn interactive_input(config: &mut Config) -> Result<()> {
 
     if sync_selection == 0 {
         // WebSocket 配置
-
-        // 服务端配置
-        // config.webserver_addr = Some(
-        //     Input::with_theme(&theme)
-        //         .with_prompt("请输入服务端 IP")
-        //         .validate_with(|input: &String| -> Result<(), String> {
-        //             if is_valid_ip(input) {
-        //                 Ok(())
-        //             } else {
-        //                 Err("无效的 IP 地址".to_string())
-        //             }
-        //         })
-        //         .default("0.0.0.0".to_string())
-        //         .interact_text()?,
-        // );
+        let server_port = config.webserver_port.unwrap_or(8113);
 
         config.webserver_port = Some(
             Input::with_theme(&theme)
                 .with_prompt("请输入本机服务端口")
-                .default(8113)
+                .default(server_port)
                 .validate_with(|input: &u16| -> Result<(), String> {
                     if is_valid_port(*input) {
                         Ok(())
@@ -88,9 +74,13 @@ pub fn interactive_input(config: &mut Config) -> Result<()> {
             .interact()?;
         
         if is_connect_to_other_device {
+            let peer_device_port = config.peer_device_port.unwrap_or(8113);
+            let peer_device_ip = config.peer_device_addr.clone().unwrap_or("".to_string());
+            
             // 对等设备
             let peer_device_ip: String = Input::with_theme(&theme)
                 .with_prompt("请输入对等设备 IP")
+                .default(peer_device_ip)
                 .validate_with(|input: &String| -> Result<(), String> {
                     if is_valid_ip(input) {
                         Ok(())
@@ -102,7 +92,7 @@ pub fn interactive_input(config: &mut Config) -> Result<()> {
 
             let peer_device_port: u16 = Input::with_theme(&theme)
                 .with_prompt("请输入对等设备端口")
-                .default(8113)
+                .default(peer_device_port)
                 .validate_with(|input: &u16| -> Result<(), String> {
                     if is_valid_port(*input) {
                         Ok(())
