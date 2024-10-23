@@ -68,10 +68,14 @@ warp = "0.3.7"
 tokio-stream = "0.1.16"
 local-ip-address = "0.6.3"
 
-diesel = { version = "2.2.0", features = ["sqlite", "returning_clauses_for_sqlite_3_35", "r2d2"] }
+diesel = { version = "2.2.0", features = [
+    "sqlite",
+    "returning_clauses_for_sqlite_3_35",
+    "r2d2",
+] }
 # build libsqlite3 as part of the build process
 # uncomment this line if you run into setup issues
-# libsqlite3-sys = { version = "0.30", features = ["bundled"] }
+libsqlite3-sys = { version = "0.30", features = ["bundled"] }
 dotenvy = "0.15"
 diesel_migrations = { version = "2.2.0", features = ["sqlite"] }
 
