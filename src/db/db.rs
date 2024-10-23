@@ -4,6 +4,7 @@ use diesel::r2d2::{self, ConnectionManager};
 use once_cell::sync::Lazy;
 use std::env;
 
+use crate::config::get_config_dir;
 use crate::migrations::run_migrations;
 
 // 定义连接池类型
@@ -17,8 +18,15 @@ pub struct DbManager {
 impl DbManager {
     // 创建一个新的 DbManager 实例
     pub fn new() -> Result<Self, diesel::r2d2::PoolError> {
-        // 从环境变量中获取数据库 URL
-        let database_url = env::var("DATABASE_URL").expect("DATABASE_URL must be set in .env file");
+        // 从环境变量中获取数据库 URL, 如果环境变量中没有设置 DATABASE_URL，则使用默认的配置目录
+        let database_url = env::var("DATABASE_URL").unwrap_or_else(|_| {
+            let config_dir = get_config_dir().unwrap();
+            config_dir
+                .join("uniclipboard.db")
+                .to_str()
+                .unwrap()
+                .to_string()
+        });
 
         // 创建连接管理器
         let manager = ConnectionManager::<SqliteConnection>::new(database_url);
