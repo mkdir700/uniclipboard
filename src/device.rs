@@ -423,7 +423,7 @@ mod tests {
 
     // 使用新的宏来包装测试函数
     wrapped_test!(test_device_manager, {
-        let mut manager = DeviceManager::new();
+        let manager = DeviceManager::new();
         let device = Device::new("test".to_string(), None, None, None);
         manager.add(device.clone()).unwrap();
         assert_eq!(manager.get("test").unwrap(), Some(device));
@@ -439,7 +439,7 @@ mod tests {
     });
 
     wrapped_test!(test_device_manager_has, {
-        let mut manager = DeviceManager::new();
+        let manager = DeviceManager::new();
         let device = Device::new("test".to_string(), None, None, None);
         manager.add(device.clone()).unwrap();
         assert_eq!(manager.has("test").unwrap(), true);
@@ -448,7 +448,7 @@ mod tests {
 
     // 测试 merge
     wrapped_test!(test_merge, {
-        let mut manager = DeviceManager::new();
+        let manager = DeviceManager::new();
         let devices = vec![
             Device::new("test".to_string(), None, None, None),
             Device::new("test1".to_string(), None, None, None),
@@ -480,7 +480,7 @@ mod tests {
 
     // set_self_device
     wrapped_test!(test_set_self_device, {
-        let mut manager = DeviceManager::new();
+        let manager = DeviceManager::new();
         let mut device = Device::new("test".to_string(), None, None, None);
 
         println!("Adding device: {:?}", device);
@@ -519,7 +519,7 @@ mod tests {
 
     // test remove
     wrapped_test!(test_remove, {
-        let mut manager = DeviceManager::new();
+        let manager = DeviceManager::new();
         let device = Device::new("test".to_string(), None, None, None);
         manager.add(device.clone()).unwrap();
         manager.remove("test").unwrap();
@@ -528,7 +528,7 @@ mod tests {
 
     // test get
     wrapped_test!(test_get, {
-        let mut manager = DeviceManager::new();
+        let manager = DeviceManager::new();
         let device = Device::new("test".to_string(), None, None, None);
         manager.add(device.clone()).unwrap();
         assert_eq!(manager.get("test").unwrap(), Some(device));
@@ -536,7 +536,7 @@ mod tests {
 
     // test get_all_devices
     wrapped_test!(test_get_all_devices, {
-        let mut manager = DeviceManager::new();
+        let manager = DeviceManager::new();
         let device = Device::new("test".to_string(), None, None, None);
         manager.add(device.clone()).unwrap();
         assert_eq!(manager.get_all_devices().unwrap().len(), 1);
@@ -544,7 +544,7 @@ mod tests {
 
     // test get_all_devices_except_self
     wrapped_test!(test_get_all_devices_except_self, {
-        let mut manager = DeviceManager::new();
+        let manager = DeviceManager::new();
         let device = Device::new("test".to_string(), None, None, None);
         manager.add(device.clone()).unwrap();
         manager.set_self_device(&device).unwrap();
@@ -555,7 +555,7 @@ mod tests {
 
     // test get_device_by_ip_and_port
     wrapped_test!(test_get_device_by_ip_and_port, {
-        let mut manager = DeviceManager::new();
+        let manager = DeviceManager::new();
         let device = Device::new("test".to_string(), None, None, None);
         manager.add(device.clone()).unwrap();
         assert_eq!(
