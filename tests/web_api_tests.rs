@@ -9,11 +9,12 @@ use std::{
 use uniclipboard::{
     device::Device,
     message::{DeviceSyncInfo, DevicesSyncMessage, RegisterDeviceMessage},
-    web::{handlers::websocket_message::MessageSource, WebServer},
+    web::{handlers::message_handler::MessageSource, WebServer},
     Config, WebSocketHandler, WebSocketMessageHandler, CONFIG,
 };
 
 mod tests {
+    use uniclipboard::context::AppContextBuilder;
     use uniclipboard::db::DB_POOL;
 
     use super::*;
@@ -54,28 +55,20 @@ mod tests {
         config.clone()
     }
 
-    fn setup_webserver() -> WebServerWrapper {
+    async fn setup_webserver() -> WebServerWrapper {
         let config = setup_config();
-        let websocket_message_handler = Arc::new(WebSocketMessageHandler::new());
-        let websocket_handler = Arc::new(WebSocketHandler::new(websocket_message_handler.clone()));
-        let webserver = WebServer::new(
-            SocketAddr::new(
-                config.webserver_addr.unwrap().parse().unwrap(),
-                config.webserver_port.unwrap(),
-            ),
-            websocket_handler.clone(),
-        );
+        let app_context = AppContextBuilder::new(config).build().await.unwrap();
         WebServerWrapper {
-            websocket_message_handler: websocket_message_handler.clone(),
-            websocket_handler: websocket_handler.clone(),
-            webserver: Arc::new(webserver),
+            websocket_message_handler: app_context.websocket_message_handler,
+            websocket_handler: app_context.websocket_handler,
+            webserver: Arc::new(app_context.webserver),
         }
     }
 
     #[tokio::test]
     #[serial]
     async fn test_404() {
-        let w = setup_webserver();
+        let w = setup_webserver().await;
         let webserver_clone = Arc::clone(&w.webserver);
         tokio::spawn(async move { webserver_clone.run().await });
         tokio::time::sleep(Duration::from_millis(500)).await;
@@ -89,7 +82,7 @@ mod tests {
     #[tokio::test]
     #[serial]
     async fn test_get_device_list() {
-        let w = setup_webserver();
+        let w = setup_webserver().await;
         let webserver_clone = Arc::clone(&w.webserver);
         tokio::spawn(async move { webserver_clone.run().await });
         tokio::time::sleep(Duration::from_millis(500)).await;
@@ -116,6 +109,7 @@ mod tests {
         //     replay_device_ids: vec![],
         // };
         w.websocket_message_handler
+            .message_handler
             .handle_register(
                 RegisterDeviceMessage::new(
                     "device1".to_string(),
@@ -127,6 +121,7 @@ mod tests {
             .await;
 
         w.websocket_message_handler
+            .message_handler
             .handle_device_list_sync(
                 DevicesSyncMessage {
                     devices: vec![DeviceSyncInfo::from(&device)],
