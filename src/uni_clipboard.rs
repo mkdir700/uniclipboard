@@ -1,12 +1,12 @@
 use anyhow::Result;
 use log::{error, info};
+use std::env;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::select;
 use tokio::signal::ctrl_c;
 use tokio::sync::{mpsc, RwLock};
 use tokio::time::sleep;
-use std::env;
 
 use crate::clipboard::LocalClipboardTrait;
 use crate::config::get_config_dir;
@@ -340,8 +340,8 @@ impl UniClipboardBuilder {
 #[cfg(test)]
 mod tests {
     use crate::{
-        message::ClipboardSyncMessage, remote_sync::RemoteClipboardSync, WebSocketHandler,
-        WebSocketMessageHandler,
+        connection::ConnectionManager, message::ClipboardSyncMessage,
+        remote_sync::RemoteClipboardSync, web::WebSocketHandler, web::WebSocketMessageHandler,
     };
 
     use super::*;
@@ -349,9 +349,9 @@ mod tests {
     use async_trait::async_trait;
     use bytes::Bytes;
     use serial_test::serial;
-    use std::{net::SocketAddr, sync::Arc, env};
-    use tokio::sync::Mutex;
     use std::fs;
+    use std::{env, net::SocketAddr, sync::Arc};
+    use tokio::sync::Mutex;
 
     fn setup_test_env() {
         env::set_var("DATABASE_URL", "uniclipboard_tests.db");
@@ -477,8 +477,13 @@ mod tests {
         let key_mouse_monitor = Arc::new(MockKeyMouseMonitor {
             is_sleep: Arc::new(Mutex::new(false)),
         });
-        let websocket_message_handler = Arc::new(WebSocketMessageHandler::new());
-        let websocket_handler = Arc::new(WebSocketHandler::new(websocket_message_handler));
+        let connection_manager = Arc::new(ConnectionManager::new());
+        let websocket_message_handler =
+            Arc::new(WebSocketMessageHandler::new(connection_manager.clone()));
+        let websocket_handler = Arc::new(WebSocketHandler::new(
+            websocket_message_handler.clone(),
+            connection_manager.clone(),
+        ));
         let webserver = WebServer::new(
             SocketAddr::new("0.0.0.0".parse().unwrap(), 8114),
             websocket_handler,
@@ -505,8 +510,13 @@ mod tests {
         let remote_sync = Arc::new(MockRemoteSync {
             content: Arc::new(Mutex::new(None)),
         });
-        let websocket_message_handler = Arc::new(WebSocketMessageHandler::new());
-        let websocket_handler = Arc::new(WebSocketHandler::new(websocket_message_handler));
+        let connection_manager = Arc::new(ConnectionManager::new());
+        let websocket_message_handler =
+            Arc::new(WebSocketMessageHandler::new(connection_manager.clone()));
+        let websocket_handler = Arc::new(WebSocketHandler::new(
+            websocket_message_handler.clone(),
+            connection_manager.clone(),
+        ));
         let webserver = WebServer::new(
             SocketAddr::new("0.0.0.0".parse().unwrap(), 8114),
             websocket_handler,
@@ -551,8 +561,13 @@ mod tests {
         let remote_sync = Arc::new(MockRemoteSync {
             content: Arc::new(Mutex::new(None)),
         });
-        let websocket_message_handler = Arc::new(WebSocketMessageHandler::new());
-        let websocket_handler = Arc::new(WebSocketHandler::new(websocket_message_handler));
+        let connection_manager = Arc::new(ConnectionManager::new());
+        let websocket_message_handler =
+            Arc::new(WebSocketMessageHandler::new(connection_manager.clone()));
+        let websocket_handler = Arc::new(WebSocketHandler::new(
+            websocket_message_handler.clone(),
+            connection_manager.clone(),
+        ));
         let webserver = WebServer::new(
             SocketAddr::new("0.0.0.0".parse().unwrap(), 8114),
             websocket_handler,

@@ -1,8 +1,9 @@
 use super::traits::RemoteClipboardSync;
 use crate::config::CONFIG;
+use crate::connection::ConnectionManager;
 use crate::device::{get_device_manager, subscribe_new_devices, Device};
 use crate::message::WebSocketMessage;
-use crate::web::handlers::websocket_message::WebSocketMessageHandler;
+use crate::web::WebSocketMessageHandler;
 use crate::{message::ClipboardSyncMessage, network::WebSocketClient};
 use anyhow::Result;
 use async_trait::async_trait;
@@ -15,13 +16,17 @@ use tokio_tungstenite::tungstenite::http::Uri;
 #[derive(Clone)]
 pub struct WebSocketSync {
     websocket_message_handler: Arc<WebSocketMessageHandler>,
+    connection_manager: Arc<ConnectionManager>,
     peer_device_addr: Option<String>,
     peer_device_port: Option<u16>,
     peer_device_connected: Arc<RwLock<Option<bool>>>,
 }
 
 impl WebSocketSync {
-    pub fn new(websocket_message_handler: Arc<WebSocketMessageHandler>) -> Self {
+    pub fn new(
+        websocket_message_handler: Arc<WebSocketMessageHandler>,
+        connection_manager: Arc<ConnectionManager>,
+    ) -> Self {
         let peer_device_addr;
         let peer_device_port;
         {
@@ -39,6 +44,7 @@ impl WebSocketSync {
 
         Self {
             websocket_message_handler,
+            connection_manager,
             peer_device_addr: peer_device_addr.clone(),
             peer_device_port: peer_device_port.clone(),
             peer_device_connected: Arc::new(RwLock::new(peer_device_connected)),
@@ -62,9 +68,9 @@ impl WebSocketSync {
 
         info!("Connected to device: {}", device);
 
-        let message_handler = self.websocket_message_handler.clone();
-        message_handler
-            .add_outgoing_connection(device.id.clone(), client)
+        self.connection_manager
+            .outgoing
+            .add_connection(device.id.clone(), client)
             .await;
         Ok(())
     }
@@ -86,8 +92,9 @@ impl WebSocketSync {
         *self.peer_device_connected.write().await = Some(true);
         client.register(None).await?;
         client.sync_device_list().await?;
-        self.websocket_message_handler
-            .add_outgoing_connection(format!("{}:{}", peer_device_addr, peer_device_port), client)
+        self.connection_manager
+            .outgoing
+            .add_connection(format!("{}:{}", peer_device_addr, peer_device_port), client)
             .await;
         Ok(())
     }
@@ -114,10 +121,7 @@ impl WebSocketSync {
                 // 连接设备前，检查两个设备是否已经连接
                 // 1. 检查 outgoning 列表中是否存在相同的 device_id
                 // 2. 检查 incoming 列表中是否存在相同的 ip + port
-                let is_connected = self_clone
-                    .websocket_message_handler
-                    .is_connected(&device)
-                    .await;
+                let is_connected = self_clone.connection_manager.is_connected(&device).await;
                 if is_connected {
                     info!("Device {} is already connected, skip...", device);
                     continue;
@@ -248,22 +252,17 @@ impl RemoteClipboardSync for WebSocketSync {
     /// 向所有已连接的客户端广播消息
     async fn push(&self, message: ClipboardSyncMessage) -> Result<()> {
         let message = WebSocketMessage::ClipboardSync(message);
-        self.websocket_message_handler
-            .broadcast(&message, &None)
-            .await?;
+        self.connection_manager.broadcast(&message, &None).await?;
         Ok(())
     }
 
     /// 从任意已连接的客户端接收剪贴板同步消息
     async fn pull(&self, timeout: Option<Duration>) -> Result<ClipboardSyncMessage> {
         let _ = timeout;
-        let clip_message = match self
-            .websocket_message_handler
-            .subscribe_clipboard_sync()
-            .await
-        {
-            Ok(Some(msg)) => msg,
-            Ok(None) => return Err(anyhow::anyhow!("No payload received")),
+        // TODO: 从连接管理器中获取到消息，这个逻辑不太合理，需要优化
+        let mut rx = self.connection_manager.subscribe_clipboard_sync().await;
+        let clip_message = match rx.recv().await {
+            Ok(msg) => msg,
             Err(e) => return Err(e.into()),
         };
         info!("A new clipboard message received: {}", clip_message);
@@ -325,9 +324,7 @@ impl RemoteClipboardSync for WebSocketSync {
 
     /// 断开所有已连接的客户端
     async fn stop(&self) -> Result<()> {
-        self.websocket_message_handler
-            .disconnect_all_outgoing_connections()
-            .await;
+        self.connection_manager.outgoing.disconnect_all().await;
         Ok(())
     }
 }

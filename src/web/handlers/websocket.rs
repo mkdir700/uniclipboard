@@ -6,17 +6,23 @@ use log::{error, info};
 use tokio_stream::wrappers::UnboundedReceiverStream;
 use warp::ws::WebSocket;
 
-use super::websocket_message::MessageSource;
-use super::websocket_message::WebSocketMessageHandler;
+use crate::connection::ConnectionManager;
+use crate::web::handlers::message_handler::MessageSource;
+use crate::web::handlers::websocket_message::WebSocketMessageHandler;
 
 pub struct WebSocketHandler {
     message_handler: Arc<WebSocketMessageHandler>,
+    connection_manager: Arc<ConnectionManager>,
 }
 
 impl WebSocketHandler {
-    pub fn new(websocket_message_handler: Arc<WebSocketMessageHandler>) -> Self {
+    pub fn new(
+        websocket_message_handler: Arc<WebSocketMessageHandler>,
+        connection_manager: Arc<ConnectionManager>,
+    ) -> Self {
         Self {
             message_handler: websocket_message_handler,
+            connection_manager,
         }
     }
 
@@ -35,11 +41,12 @@ impl WebSocketHandler {
         }
 
         {
-            self.message_handler
-                .add_incoming_connection(client_id.clone(), client_sender)
+            self.connection_manager
+                .incoming
+                .add_connection(client_id.clone(), client_sender)
                 .await;
 
-            let count = self.message_handler.count_incoming_connections().await;
+            let count = self.connection_manager.incoming.count().await;
             info!("Client {} connected, current clients: {}", client_id, count);
         }
 
@@ -67,13 +74,14 @@ impl WebSocketHandler {
             }
         }
         info!("Client [{}] disconnected", client_id);
-        self.client_disconnected(client_id, addr).await;
+        self.client_disconnected(client_id).await;
     }
 
-    async fn client_disconnected(&self, client_id: String, addr: Option<SocketAddr>) {
+    async fn client_disconnected(&self, client_id: String) {
         // client_id 是 ip+port 的方式组合字符串
-        self.message_handler
-            .disconnect_incoming_connection(client_id, addr)
+        self.connection_manager
+            .incoming
+            .remove_connection(client_id)
             .await;
     }
 }

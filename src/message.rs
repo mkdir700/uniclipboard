@@ -263,6 +263,7 @@ pub enum WebSocketMessage {
     DeviceListSync(DevicesSyncMessage),
     Register(RegisterDeviceMessage),
     Unregister(String),
+    Offline(String),
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]

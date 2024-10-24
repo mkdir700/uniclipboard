@@ -1,6 +1,8 @@
 mod cli;
 pub mod clipboard;
 pub mod config;
+pub mod connection;
+pub mod context;
 pub mod db;
 pub mod device;
 pub mod encrypt;
@@ -20,6 +22,7 @@ pub use cli::{parse_args, Args};
 pub use clipboard::LocalClipboard;
 pub use clipboard::LocalClipboardTrait;
 pub use config::{get_config_path, Config, CONFIG};
+pub use context::AppContext;
 pub use device::get_device_manager;
 pub use file_metadata::FileMetadata;
 pub use key_mouse_monitor::KeyMouseMonitor;
