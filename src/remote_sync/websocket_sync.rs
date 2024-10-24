@@ -7,7 +7,7 @@ use crate::web::WebSocketMessageHandler;
 use crate::{message::ClipboardSyncMessage, network::WebSocketClient};
 use anyhow::Result;
 use async_trait::async_trait;
-use log::{error, info};
+use log::{error, info, warn};
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::RwLock;
@@ -304,11 +304,18 @@ impl RemoteClipboardSync for WebSocketSync {
                 ),
             }
         } else {
+            let mut errors = vec![];
             info!("Start to connect to {} devices", devices.len());
             for device in &devices {
-                self.connect_device(device).await?;
+                self.connect_device(device).await.unwrap_or_else(|e| {
+                    errors.push(e);
+                });
             }
-            info!("All devices connected");
+            if !errors.is_empty() {
+                warn!("Failed to connect to devices: {:?}", errors);
+            } else {
+                info!("All devices connected");
+            }
         }
 
         // 监听设备上下线
