@@ -81,6 +81,7 @@ async fn main() -> Result<()> {
         );
         manager.add(device.clone())?;
         manager.set_self_device(&device)?;
+        manager.set_online(&config.device_id)?;
     }
 
     // 创建 AppContext
