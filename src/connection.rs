@@ -50,7 +50,7 @@ impl IncomingConnectionManager {
         self.connections.read().await.len()
     }
 
-    pub async fn disconnect(&self, id: &IpPort) {
+    async fn disconnect(&self, id: &IpPort) {
         let client = {
             let clients = self.connections.read().await;
             clients.get(&id.clone()).cloned()
@@ -66,7 +66,9 @@ impl IncomingConnectionManager {
         }
     }
 
-    #[allow(dead_code)]
+    /// 断开所有连接
+    ///
+    /// 向所有已连接的设备发送离线消息
     pub async fn disconnect_all(&self) {
         info!("Disconnecting all connections");
         let _ = self
@@ -270,7 +272,7 @@ impl OutgoingConnectionManager {
         self.connections.read().await.len()
     }
 
-    pub async fn disconnect(&self, id: &DeviceId) {
+    async fn disconnect(&self, id: &DeviceId) {
         let ws_client = {
             let clients = self.connections.read().await;
             clients.get(id).map(|conn| conn.0.clone())
@@ -278,24 +280,14 @@ impl OutgoingConnectionManager {
 
         if let Some(ws_client) = ws_client {
             let _ = ws_client.write().await.disconnect().await;
-            // 将该设备状态设置为 offline
-            if let Err(e) = GLOBAL_DEVICE_MANAGER.set_offline(id) {
-                error!("Failed to set device {} offline: {}", id, e);
-            }
         }
     }
 
+    /// 断开所有连接
     pub async fn disconnect_all(&self) {
         let _ = self
             .broadcast(&WebSocketMessage::Offline("offline".to_string()), &None)
             .await;
-        let mut clients = self.connections.write().await;
-        for (id, _) in clients.iter() {
-            if let Err(e) = GLOBAL_DEVICE_MANAGER.set_offline(id) {
-                error!("Failed to set device {} offline: {}", id, e);
-            }
-        }
-        clients.clear();
     }
 
     async fn broadcast(
@@ -470,6 +462,26 @@ impl ConnectionManager {
         Ok(())
     }
 
+    /// 停止
+    ///
+    /// 1. 断开所有连接
+    /// 2. 移除所有连接
+    /// 3. 设置所有设备为 offline
+    pub async fn stop(&self) {
+        self.outgoing.disconnect_all().await;
+        self.incoming.disconnect_all().await;
+
+        for (ip_port, _) in self.device_ip_port_map.read().await.iter() {
+            self.remove_connection(ip_port).await;
+        }
+
+        for (device_id, _) in self.incoming.connections.read().await.iter() {
+            self.remove_connection(device_id).await;
+        }
+
+        info!("Connection manager stopped");
+    }
+
     pub async fn update_device_ip_port(&self, device_id: DeviceId, ip_port: IpPort) {
         let mut map = self.device_ip_port_map.write().await;
         map.insert(device_id, ip_port);
@@ -534,20 +546,33 @@ impl ConnectionManager {
     ///
     /// * `id`: The `id` parameter in the `disconnect` function is of type `DeviceId`, which is a reference
     /// to the identifier of a device.
-    pub async fn disconnect(&self, id: &DeviceId) {
-        self.outgoing.disconnect(id).await;
-        let ip_port = self.device_ip_port_map.read().await.get(id).cloned();
-        if let Some(ip_port) = ip_port {
-            self.incoming.disconnect(&ip_port).await;
-        }
-    }
+    // pub async fn disconnect(&self, id: &String) {
+    //     let ip_port = self.device_ip_port_map.read().await.get(id).cloned();
+    //     if let Some(ip_port) = ip_port {
+    //         self.incoming.disconnect(&ip_port).await;
+    //     } else {
+    //         self.outgoing.disconnect(id).await;
+    //     }
+    // }
 
-    #[allow(dead_code)]
-    pub async fn remove_connection(&self, id: &DeviceId) {
-        self.outgoing.remove_connection(id).await;
+    /// 断开指定设备并移除连接
+    ///
+    /// `id` 可能是 ip:port 或者 device_id
+    pub async fn remove_connection(&self, id: &String) {
         let ip_port = self.device_ip_port_map.read().await.get(id).cloned();
         if let Some(ip_port) = ip_port {
             self.incoming.remove_connection(&ip_port).await;
+            let device_id = self.device_ip_port_map.read().await.get(id).cloned();
+            if let Some(device_id) = device_id {
+                if let Err(e) = GLOBAL_DEVICE_MANAGER.set_offline(&device_id) {
+                    error!("Failed to set device {} offline: {}", device_id, e);
+                }
+            }
+        } else {
+            self.outgoing.remove_connection(id).await;
+            if let Err(e) = GLOBAL_DEVICE_MANAGER.set_offline(id) {
+                error!("Failed to set device {} offline: {}", id, e);
+            }
         }
     }
 }

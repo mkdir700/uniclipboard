@@ -141,12 +141,12 @@ impl MessageHandler {
     pub async fn handle_offline(&self, device_id: DeviceId) {
         info!("Received device offline message from {:?}", device_id);
 
-        self.connection_manager.disconnect(&device_id).await;
+        self.connection_manager.remove_connection(&device_id).await;
     }
 }
 
 #[derive(Debug)]
 pub enum MessageSource {
     IpPort(SocketAddr),
-    DeviceId(String),
+    DeviceId(DeviceId),
 }

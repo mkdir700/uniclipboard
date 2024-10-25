@@ -206,6 +206,9 @@ impl UniClipboard {
         // 停止 Web 服务器
         self.webserver.shutdown().await?;
 
+        // 停止连接管理器
+        self.connection_manager.stop().await;
+
         Ok(())
     }
 

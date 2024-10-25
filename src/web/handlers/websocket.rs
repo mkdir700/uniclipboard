@@ -82,7 +82,6 @@ impl WebSocketHandler {
         info!("Client [{}] disconnected", client_id);
         // client_id 是 ip+port 的方式组合字符串
         self.connection_manager
-            .incoming
             .remove_connection(&client_id)
             .await;
     }

@@ -157,7 +157,7 @@ impl From<&DbDevice> for Device {
             db_device.server_port.map(|p| p as u16),
         );
         device.self_device = db_device.self_device;
-        device.status = DeviceStatus::try_from(device.status).unwrap_or(DeviceStatus::Unknown);
+        device.status = DeviceStatus::try_from(db_device.status).unwrap_or(DeviceStatus::Unknown);
         device.updated_at = Some(db_device.updated_at);
         device
     }
