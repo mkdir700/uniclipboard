@@ -75,14 +75,15 @@ impl WebSocketHandler {
         }
         // ? 如果客户端意外中止，client_disconnected 是否会一定被调用到？
         // ? If the client is terminated unexpectedly, will client_disconnected be called?
-        self.client_disconnected(client_id).await;
+        if let Some(addr) = addr {
+            self.client_disconnected(addr).await;
+        }
     }
 
-    async fn client_disconnected(&self, client_id: String) {
-        info!("Client [{}] disconnected", client_id);
-        // client_id 是 ip+port 的方式组合字符串
+    async fn client_disconnected(&self, addr: SocketAddr) {
+        info!("Client [{}] disconnected", addr);
         self.connection_manager
-            .remove_connection(&client_id)
+            .remove_connection(MessageSource::IpPort(addr))
             .await;
     }
 }

@@ -3,10 +3,12 @@ use crate::device::get_device_manager;
 use crate::device::{subscribe_new_devices, Device, GLOBAL_DEVICE_MANAGER};
 use crate::message::{ClipboardSyncMessage, WebSocketMessage};
 use crate::network::WebSocketClient;
+use crate::web::handlers::message_handler::MessageSource;
 use anyhow::Result;
 use futures::future::join_all;
 use log::{debug, error, info, warn};
 use std::collections::HashMap;
+use std::net::SocketAddr;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::{broadcast, mpsc, RwLock};
@@ -33,27 +35,27 @@ impl IncomingConnectionManager {
 
     pub async fn add_connection(
         &self,
-        id: IpPort,
+        ip_port: IpPort,
         client: mpsc::UnboundedSender<Result<Message, warp::Error>>,
     ) {
         let mut clients = self.connections.write().await;
-        clients.insert(id, client);
+        clients.insert(ip_port, client);
     }
 
-    pub async fn remove_connection(&self, id: &IpPort) {
-        self.disconnect(id).await;
+    pub async fn remove_connection(&self, ip_port: &IpPort) {
+        self.disconnect(ip_port).await;
         let mut clients = self.connections.write().await;
-        clients.remove(id);
+        clients.remove(ip_port);
     }
 
     pub async fn count(&self) -> usize {
         self.connections.read().await.len()
     }
 
-    async fn disconnect(&self, id: &IpPort) {
+    async fn disconnect(&self, ip_port: &IpPort) {
         let client = {
             let clients = self.connections.read().await;
-            clients.get(&id.clone()).cloned()
+            clients.get(ip_port).cloned()
         };
 
         // send offline message
@@ -348,7 +350,7 @@ impl OutgoingConnectionManager {
 pub struct ConnectionManager {
     pub incoming: IncomingConnectionManager,
     pub outgoing: OutgoingConnectionManager,
-    device_ip_port_map: Arc<RwLock<HashMap<DeviceId, IpPort>>>,
+    addr_device_id_map: Arc<RwLock<HashMap<IpPort, DeviceId>>>,
     // TODO: 需要解耦 clipboard_message_sync_sender
     clipboard_message_sync_sender: Arc<broadcast::Sender<ClipboardSyncMessage>>,
 }
@@ -359,7 +361,7 @@ impl ConnectionManager {
         Self {
             incoming: IncomingConnectionManager::new(),
             outgoing: OutgoingConnectionManager::new(),
-            device_ip_port_map: Arc::new(RwLock::new(HashMap::new())),
+            addr_device_id_map: Arc::new(RwLock::new(HashMap::new())),
             clipboard_message_sync_sender: Arc::new(clipboard_message_sync_sender),
         }
     }
@@ -464,20 +466,25 @@ impl ConnectionManager {
         self.outgoing.disconnect_all().await;
         self.incoming.disconnect_all().await;
 
-        for (ip_port, _) in self.device_ip_port_map.read().await.iter() {
-            self.remove_connection(ip_port).await;
+        for (_, ip_port) in self.addr_device_id_map.read().await.iter() {
+            if let Ok(addr) = ip_port.parse::<SocketAddr>() {
+                self.remove_connection(MessageSource::IpPort(addr)).await;
+            } else {
+                error!("Invalid ip_port: {}", ip_port);
+            }
         }
 
         for (device_id, _) in self.incoming.connections.read().await.iter() {
-            self.remove_connection(device_id).await;
+            self.remove_connection(MessageSource::DeviceId(device_id.clone()))
+                .await;
         }
 
         info!("Connection manager stopped");
     }
 
     pub async fn update_device_ip_port(&self, device_id: DeviceId, ip_port: IpPort) {
-        let mut map = self.device_ip_port_map.write().await;
-        map.insert(device_id, ip_port);
+        let mut map = self.addr_device_id_map.write().await;
+        map.insert(ip_port, device_id);
     }
 
     pub async fn broadcast(
@@ -551,20 +558,31 @@ impl ConnectionManager {
     /// 断开指定设备并移除连接
     ///
     /// `id` 可能是 ip:port 或者 device_id
-    pub async fn remove_connection(&self, id: &String) {
-        let ip_port = self.device_ip_port_map.read().await.get(id).cloned();
-        if let Some(ip_port) = ip_port {
-            self.incoming.remove_connection(&ip_port).await;
-            let device_id = self.device_ip_port_map.read().await.get(id).cloned();
-            if let Some(device_id) = device_id {
-                if let Err(e) = GLOBAL_DEVICE_MANAGER.set_offline(&device_id) {
-                    error!("Failed to set device {} offline: {}", device_id, e);
-                }
+    pub async fn remove_connection(&self, id: MessageSource) {
+        match id {
+            MessageSource::IpPort(addr) => {
+                self.remove_connection_by_addr(&format!("{}:{}", addr.ip(), addr.port()))
+                    .await
             }
-        } else {
-            self.outgoing.remove_connection(id).await;
-            if let Err(e) = GLOBAL_DEVICE_MANAGER.set_offline(id) {
-                error!("Failed to set device {} offline: {}", id, e);
+            MessageSource::DeviceId(device_id) => {
+                self.remove_connection_by_device_id(&device_id).await
+            }
+        }
+    }
+
+    async fn remove_connection_by_device_id(&self, device_id: &DeviceId) {
+        self.outgoing.remove_connection(device_id).await;
+        if let Err(e) = GLOBAL_DEVICE_MANAGER.set_offline(device_id) {
+            error!("Failed to set device {} offline: {}", device_id, e);
+        }
+    }
+
+    async fn remove_connection_by_addr(&self, ip_port: &IpPort) {
+        let device_id = self.addr_device_id_map.read().await.get(ip_port).cloned();
+        self.incoming.remove_connection(ip_port).await;
+        if let Some(device_id) = device_id {
+            if let Err(e) = GLOBAL_DEVICE_MANAGER.set_offline(&device_id) {
+                error!("Failed to set device {} offline: {}", device_id, e);
             }
         }
     }
