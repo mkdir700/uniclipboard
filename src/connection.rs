@@ -58,10 +58,6 @@ impl IncomingConnectionManager {
 
         // send offline message
         if let Some(client) = client {
-            let message = WebSocketMessage::Offline(id.clone());
-            let message_str = serde_json::to_string(&message).unwrap();
-            let message = Message::text(message_str);
-            let _ = client.send(Ok(message));
             let _ = client.send(Ok(Message::close()));
         }
     }
@@ -71,10 +67,6 @@ impl IncomingConnectionManager {
     /// 向所有已连接的设备发送离线消息
     pub async fn disconnect_all(&self) {
         info!("Disconnecting all connections");
-        let _ = self
-            .broadcast(&WebSocketMessage::Offline("offline".to_string()), &None)
-            .await;
-
         let clients = {
             let mut clients = self.connections.write().await;
             std::mem::take(&mut *clients)
@@ -286,11 +278,9 @@ impl OutgoingConnectionManager {
 
     /// 断开所有连接
     pub async fn disconnect_all(&self) {
-        let device_id = CONFIG.read().unwrap().device_id.clone();
-        // ?TODO: 是发送 WebSocketMessage::Offline 还是 Message::Close ?
-        let _ = self
-            .broadcast(&WebSocketMessage::Offline(device_id), &None)
-            .await;
+        for (_device_id, (client, _, _, _)) in self.connections.read().await.iter() {
+            let _ = client.write().await.disconnect().await;
+        }
     }
 
     async fn broadcast(

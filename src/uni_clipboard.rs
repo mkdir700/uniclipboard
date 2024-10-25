@@ -197,6 +197,9 @@ impl UniClipboard {
         }
         *is_running = false;
 
+        // 停止连接管理器
+        self.connection_manager.stop().await;
+
         // 停止本地剪切板监听
         self.clipboard.stop_monitoring().await?;
 
@@ -205,9 +208,6 @@ impl UniClipboard {
 
         // 停止 Web 服务器
         self.webserver.shutdown().await?;
-
-        // 停止连接管理器
-        self.connection_manager.stop().await;
 
         Ok(())
     }

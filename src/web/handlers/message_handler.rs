@@ -135,14 +135,6 @@ impl MessageHandler {
         info!("Received device unregister message from {:?}", device_id);
         todo!()
     }
-
-    /// 处理设备离线消息
-    /// 连接管理删除连接
-    pub async fn handle_offline(&self, device_id: DeviceId) {
-        info!("Received device offline message from {:?}", device_id);
-
-        self.connection_manager.remove_connection(&device_id).await;
-    }
 }
 
 #[derive(Debug)]

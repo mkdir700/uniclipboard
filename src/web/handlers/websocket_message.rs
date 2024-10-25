@@ -83,9 +83,6 @@ impl WebSocketMessageHandler {
                         WebSocketMessage::Unregister(device_id) => {
                             self.message_handler.handle_unregister(device_id).await;
                         }
-                        WebSocketMessage::Offline(device_id) => {
-                            self.message_handler.handle_offline(device_id).await;
-                        }
                     },
                     Err(e) => {
                         error!(
