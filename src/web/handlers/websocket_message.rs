@@ -34,13 +34,6 @@ impl WebSocketMessageHandler {
             loop {
                 let message = rx.recv().await;
                 if let Ok((device_id, message)) = message {
-                    let message = match message.to_json() {
-                        Ok(text) => Message::text(text),
-                        Err(e) => {
-                            error!("Failed to serialize WebSocketMessage: {}, skip handling", e);
-                            continue;
-                        }
-                    };
                     self_clone
                         .handle_message(message, MessageSource::DeviceId(device_id))
                         .await;
@@ -92,8 +85,6 @@ impl WebSocketMessageHandler {
                     }
                 }
             }
-        } else if msg.is_ping() {
-            // 处理 ping 消息
         }
     }
 }

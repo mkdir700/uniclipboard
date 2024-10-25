@@ -276,7 +276,6 @@ impl DeviceManager {
     }
 
     /// 获取离线设备
-    #[allow(dead_code)]
     pub fn get_offline_devices(&self) -> Result<Vec<Device>> {
         let devices = self.get_all_devices()?;
         let offline_devices = devices

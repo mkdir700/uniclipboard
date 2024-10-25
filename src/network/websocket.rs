@@ -15,15 +15,17 @@ use log::warn;
 use std::sync::atomic::AtomicBool;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
+use std::time::Duration;
 use tokio::net::TcpStream;
 use tokio::sync::broadcast;
 use tokio::sync::Mutex;
+use tokio::sync::RwLock;
 use tokio_tungstenite::connect_async;
 use tokio_tungstenite::tungstenite::http::Uri;
 use tokio_tungstenite::tungstenite::Message;
 use tokio_tungstenite::{MaybeTlsStream, WebSocketStream};
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct WebSocketClient {
     uri: Uri,
     writer: Arc<
@@ -42,8 +44,9 @@ pub struct WebSocketClient {
             Mutex<futures_util::stream::SplitStream<WebSocketStream<MaybeTlsStream<TcpStream>>>>,
         >,
     >,
-    message_tx: Arc<broadcast::Sender<WebSocketMessage>>,
-    message_join_handle: Option<tokio::task::JoinHandle<()>>,
+    message_tx: Arc<broadcast::Sender<Message>>,
+    message_join_handle: Arc<Option<tokio::task::JoinHandle<()>>>,
+    health_check_join_handle: Arc<RwLock<Option<tokio::task::JoinHandle<()>>>>,
     connected: Arc<AtomicBool>,
 }
 
@@ -55,7 +58,8 @@ impl WebSocketClient {
             writer: Arc::new(None),
             reader: Arc::new(None),
             message_tx: Arc::new(tx),
-            message_join_handle: None,
+            message_join_handle: Arc::new(None),
+            health_check_join_handle: Arc::new(RwLock::new(None)),
             connected: Arc::new(AtomicBool::new(false)),
         }
     }
@@ -66,17 +70,13 @@ impl WebSocketClient {
         let message_tx = self.message_tx.clone();
         let connected = self.connected.clone();
 
-        self.message_join_handle = Some(tokio::spawn(async move {
+        self.message_join_handle = Arc::new(Some(tokio::spawn(async move {
             loop {
                 if let Some(reader) = reader.as_ref() {
                     let mut reader = reader.lock().await;
                     match reader.next().await {
                         Some(Ok(msg)) => {
-                            if let Ok(websocket_msg) =
-                                serde_json::from_str(&msg.to_text().unwrap_or_default())
-                            {
-                                let _ = message_tx.send(websocket_msg);
-                            }
+                            let _ = message_tx.send(msg);
                         }
                         Some(Err(e)) => {
                             warn!("WebSocket error: {}", e);
@@ -96,18 +96,60 @@ impl WebSocketClient {
             info!("WebSocket message handler stopped");
             // TODO!: 修改 connected 状态为 false
             connected.store(false, Ordering::Relaxed);
-        }));
+        })));
     }
 
-    pub async fn stop_message_handler(&mut self) {
-        if let Some(handle) = self.message_join_handle.take() {
+    /// 停止收集消息的异步任务
+    async fn stop_collect_messages(&mut self) {
+        if let Some(handle) = Arc::get_mut(&mut self.message_join_handle)
+            .expect("Arc should be unique")
+            .take()
+        {
             handle.abort();
-            self.message_join_handle = None;
+        }
+    }
+
+    /// 开启一个异步任务，持续的向服务器发送 ping 消息，并等待 pong 消息
+    /// 如果连续3次发送 ping 消息失败，则认为连接断开，并修改 connected 状态为 false
+    async fn start_health_check(&mut self) {
+        let self_clone = self.clone();
+        let connected = self.connected.clone();
+
+        self.health_check_join_handle = Arc::new(RwLock::new(Some(tokio::spawn(async move {
+            let mut interval = tokio::time::interval(Duration::from_secs(1));
+            let mut ping_count = 0;
+            loop {
+                interval.tick().await;
+                if !connected.load(Ordering::Relaxed) {
+                    break;
+                }
+
+                if ping_count >= 3 {
+                    error!("WebSocket health check failed 3 times");
+                    connected.store(false, Ordering::Relaxed);
+                    break;
+                }
+
+                if let Err(e) = self_clone.ping(Duration::from_secs(3)).await {
+                    error!(
+                        "WebSocket health check failed: {}, count: {}",
+                        e, ping_count
+                    );
+                    ping_count += 1;
+                }
+            }
+        }))));
+    }
+
+    /// 停止健康检查的异步任务
+    async fn stop_health_check(&self) {
+        if let Some(handle) = self.health_check_join_handle.write().await.take() {
+            handle.abort();
         }
     }
 
     /// 订阅消息, 返回一个 Receiver 对象
-    pub fn subscribe(&self) -> broadcast::Receiver<WebSocketMessage> {
+    pub fn subscribe(&self) -> broadcast::Receiver<Message> {
         self.message_tx.subscribe()
     }
 
@@ -145,8 +187,14 @@ impl WebSocketClient {
     #[allow(dead_code)]
     pub async fn receive_clipboard_sync(&self) -> Result<Option<ClipboardSyncMessage>> {
         let message = self.subscribe().recv().await?;
-        if let WebSocketMessage::ClipboardSync(data) = message {
-            return Ok(Some(data));
+        match message {
+            Message::Text(text) => {
+                let web_socket_message: WebSocketMessage = serde_json::from_str(&text)?;
+                if let WebSocketMessage::ClipboardSync(data) = web_socket_message {
+                    return Ok(Some(data));
+                }
+            }
+            _ => {}
         }
         Ok(None)
     }
@@ -176,8 +224,7 @@ impl WebSocketClient {
         Ok(())
     }
 
-    #[allow(dead_code)]
-    pub async fn receive_raw(&self) -> Result<WebSocketMessage> {
+    pub async fn receive_raw(&self) -> Result<Message> {
         let message = self.subscribe().recv().await?;
         Ok(message)
     }
@@ -211,8 +258,9 @@ impl WebSocketClient {
             self.reader = Arc::new(Some(Mutex::new(reader)));
         }
 
-        self.start_collect_messages().await;
         self.connected.store(true, Ordering::Relaxed);
+        self.start_collect_messages().await;
+        self.start_health_check().await;
         Ok(())
     }
 
@@ -235,7 +283,8 @@ impl WebSocketClient {
         // 现在可以安全地修改 self.writer 和 self.reader
         self.writer = Arc::new(None);
         self.reader = Arc::new(None);
-        self.stop_message_handler().await;
+        self.stop_collect_messages().await;
+        self.stop_health_check().await;
         self.connected.store(false, Ordering::Relaxed);
         Ok(())
     }
@@ -285,8 +334,36 @@ impl WebSocketClient {
         Ok(())
     }
 
-    async fn ping(&self) -> Result<()> {
-        self.send_raw(Message::Ping(vec![])).await?;
-        Ok(())
+    /// 发送 ping 消息, 并等待 pong 消息
+    /// 如果收到 pong 消息, 则返回 true, 否则返回 false
+    async fn ping(&self, timeout: Duration) -> Result<bool> {
+        // 生成一个随机的 ping 消息
+        let rand_bytes = rand::random::<[u8; 16]>().to_vec();
+        let rand_bytes_clone = rand_bytes.clone();
+        let ping_message = Message::Ping(rand_bytes);
+        let mut rx = self.subscribe();
+
+        let join_handle = tokio::spawn(async move {
+            if let Ok(msg) = rx.recv().await {
+                if let Message::Pong(msg) = msg {
+                    return msg == rand_bytes_clone;
+                }
+            }
+            false
+        });
+
+        // 发送 ping 消息，并在 timeout 时间内等待 pong 消息
+        let result = tokio::time::timeout(timeout, async move {
+            if let Err(e) = self.send_raw(ping_message).await {
+                error!("Failed to send ping message: {}", e);
+            }
+            join_handle.await
+        })
+        .await?;
+
+        match result {
+            Ok(v) => Ok(v),
+            Err(e) => Err(anyhow::anyhow!("Ping timeout: {}", e)),
+        }
     }
 }

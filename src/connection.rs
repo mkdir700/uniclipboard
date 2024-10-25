@@ -15,11 +15,12 @@ use tokio::sync::{broadcast, mpsc, RwLock};
 use tokio::task::JoinHandle;
 use tokio::time::interval;
 use tokio_tungstenite::tungstenite::http::Uri;
-use warp::ws::Message;
+use tokio_tungstenite::tungstenite::Message;
+use warp::ws::Message as WarpMessage;
 
 pub type DeviceId = String;
 pub type IpPort = String;
-pub type Clients = HashMap<IpPort, mpsc::UnboundedSender<Result<Message, warp::Error>>>;
+pub type Clients = HashMap<IpPort, mpsc::UnboundedSender<Result<WarpMessage, warp::Error>>>;
 
 #[derive(Clone)]
 pub struct IncomingConnectionManager {
@@ -36,7 +37,7 @@ impl IncomingConnectionManager {
     pub async fn add_connection(
         &self,
         ip_port: IpPort,
-        client: mpsc::UnboundedSender<Result<Message, warp::Error>>,
+        client: mpsc::UnboundedSender<Result<WarpMessage, warp::Error>>,
     ) {
         let mut clients = self.connections.write().await;
         clients.insert(ip_port, client);
@@ -60,7 +61,7 @@ impl IncomingConnectionManager {
 
         // send offline message
         if let Some(client) = client {
-            let _ = client.send(Ok(Message::close()));
+            let _ = client.send(Ok(WarpMessage::close()));
         }
     }
 
@@ -75,7 +76,7 @@ impl IncomingConnectionManager {
         };
 
         let close_connections = clients.into_iter().map(|(id, tx)| async move {
-            if let Err(e) = tx.send(Ok(Message::close())) {
+            if let Err(e) = tx.send(Ok(WarpMessage::close())) {
                 error!("Failed to send close message to client {}: {}", id, e);
             }
             // 等待一小段时间，让客户端有机会处理关闭消息
@@ -94,7 +95,7 @@ impl IncomingConnectionManager {
         excludes: &Option<Vec<String>>,
     ) -> Result<()> {
         let message_str = serde_json::to_string(&message).unwrap();
-        let message = Message::text(message_str);
+        let message = WarpMessage::text(message_str);
 
         // 只在短时间内持有锁，仅用于克隆需要的数据
         let futures = {
@@ -143,14 +144,14 @@ pub struct OutgoingConnectionManager {
                 DeviceId,
                 (
                     Arc<RwLock<WebSocketClient>>,
-                    broadcast::Receiver<WebSocketMessage>,
+                    broadcast::Receiver<Message>,
                     tokio::task::JoinHandle<()>,
                     tokio::task::JoinHandle<()>,
                 ),
             >,
         >,
     >,
-    messages_tx: Arc<broadcast::Sender<(String, WebSocketMessage)>>,
+    messages_tx: Arc<broadcast::Sender<(String, WarpMessage)>>,
 }
 
 impl OutgoingConnectionManager {
@@ -207,7 +208,7 @@ impl OutgoingConnectionManager {
 
     pub async fn subscribe_outgoing_connections_message(
         &self,
-    ) -> broadcast::Receiver<(String, WebSocketMessage)> {
+    ) -> broadcast::Receiver<(String, WarpMessage)> {
         self.messages_tx.subscribe()
     }
 
@@ -219,32 +220,49 @@ impl OutgoingConnectionManager {
         let mut clients = self.connections.write().await;
         let message_rx = client.subscribe();
         let arc_client = Arc::new(RwLock::new(client));
-        let arc_client_clone = arc_client.clone();
         let outgoing_connections_message_tx = self.messages_tx.clone();
-        let id_clone = id.clone();
+        let self_clone = self.clone();
 
+        let arc_client_clone = arc_client.clone();
+        let id_clone = id.clone();
         // 启动消息转发
         let forward_message_task = tokio::spawn(async move {
-            let mut message_rx = { arc_client.clone().read().await.subscribe() };
+            let mut message_rx = { arc_client_clone.clone().read().await.subscribe() };
             loop {
                 let message = message_rx.recv().await;
                 if let Ok(message) = message {
-                    let _ = outgoing_connections_message_tx.send((id.clone(), message));
+                    let msg = WarpMessage::text(message.to_string());
+                    let _ = outgoing_connections_message_tx.send((id_clone.clone(), msg));
                 }
             }
         });
+
+        let arc_client_clone = arc_client.clone();
+        let id_clone = id.clone();
         // 启动健康检查
-        let health_check_task = self.start_health_check().await;
+        let health_check_task = tokio::spawn(async move {
+            let mut interval = interval(Duration::from_secs(1));
+
+            loop {
+                interval.tick().await;
+                if !arc_client_clone.clone().read().await.is_connected() {
+                    info!("Health check: device is disconnected");
+                    break;
+                }
+            }
+            // ! 设备状态没有发生变更
+            self_clone.remove_connection(&id_clone).await;
+        });
 
         // 设置设备状态为 online
-        if let Err(e) = GLOBAL_DEVICE_MANAGER.set_online(&id_clone) {
-            error!("Failed to set device {} online: {}", id_clone, e);
+        if let Err(e) = GLOBAL_DEVICE_MANAGER.set_online(&id) {
+            error!("Failed to set device {} online: {}", id, e);
         }
 
         clients.insert(
-            id_clone,
+            id,
             (
-                arc_client_clone,
+                arc_client,
                 message_rx,
                 forward_message_task,
                 health_check_task,
@@ -267,6 +285,10 @@ impl OutgoingConnectionManager {
         self.connections.read().await.len()
     }
 
+    /// 断开连接
+    ///
+    /// 1. 断开连接
+    /// 2. 设置状态为 offline
     async fn disconnect(&self, id: &DeviceId) {
         let ws_client = {
             let clients = self.connections.read().await;
@@ -275,6 +297,10 @@ impl OutgoingConnectionManager {
 
         if let Some(ws_client) = ws_client {
             let _ = ws_client.write().await.disconnect().await;
+        }
+
+        if let Err(e) = GLOBAL_DEVICE_MANAGER.set_offline(id) {
+            error!("Failed to set device {} offline: {}", id, e);
         }
     }
 
@@ -319,31 +345,6 @@ impl OutgoingConnectionManager {
             ))
         }
     }
-
-    /// 启动健康检查
-    // 如果健康检查失败, 则发送则移除连接
-    // 如果健康检查成功, 则不做任何操作
-    async fn start_health_check(&self) -> JoinHandle<()> {
-        let mut interval = interval(Duration::from_secs(1));
-        let self_clone = self.clone();
-
-        tokio::spawn(async move {
-            loop {
-                interval.tick().await;
-                let mut disconnected_devices = Vec::new();
-                for (id, client) in self_clone.connections.read().await.iter() {
-                    if !client.0.read().await.is_connected() {
-                        disconnected_devices.push(id.clone());
-                    }
-                }
-
-                for device_id in disconnected_devices {
-                    self_clone.remove_connection(&device_id).await;
-                    info!("Health check: device [{}] is disconnected", device_id);
-                }
-            }
-        })
-    }
 }
 
 #[derive(Clone)]
@@ -353,6 +354,8 @@ pub struct ConnectionManager {
     addr_device_id_map: Arc<RwLock<HashMap<IpPort, DeviceId>>>,
     // TODO: 需要解耦 clipboard_message_sync_sender
     clipboard_message_sync_sender: Arc<broadcast::Sender<ClipboardSyncMessage>>,
+    listen_new_devices_handle: Arc<RwLock<Option<JoinHandle<()>>>>,
+    try_connect_offline_devices_handle: Arc<RwLock<Option<JoinHandle<()>>>>,
 }
 
 impl ConnectionManager {
@@ -363,13 +366,15 @@ impl ConnectionManager {
             outgoing: OutgoingConnectionManager::new(),
             addr_device_id_map: Arc::new(RwLock::new(HashMap::new())),
             clipboard_message_sync_sender: Arc::new(clipboard_message_sync_sender),
+            listen_new_devices_handle: Arc::new(RwLock::new(None)),
+            try_connect_offline_devices_handle: Arc::new(RwLock::new(None)),
         }
     }
 
     /// 监听新增的设备
     ///
     /// 当有新设备上线且未连接时，尝试连接该设备
-    async fn listen_new_devices(&self) {
+    async fn listen_new_devices(&self) -> JoinHandle<()> {
         let mut new_devices_rx = subscribe_new_devices();
         let self_clone = self.clone();
 
@@ -385,7 +390,44 @@ impl ConnectionManager {
                     Err(e) => error!("Failed to connect to new device: {}, error: {}", device, e),
                 }
             }
-        });
+        })
+    }
+
+    /// 定时去连接离线的设备
+    ///
+    /// 1. 获取所有离线的设备
+    /// 2. 尝试连接这些设备
+    async fn try_connect_offline_devices(&self) -> JoinHandle<()> {
+        let outgoing_clone = self.outgoing.clone();
+
+        tokio::spawn(async move {
+            // 暂时每分钟检查一次
+            let mut interval = interval(Duration::from_secs(60));
+
+            loop {
+                interval.tick().await;
+                if let Ok(devices) = get_device_manager().get_offline_devices() {
+                    let count = devices.len();
+                    if count > 0 {
+                        info!("Found {} offline devices, try to connect them", count);
+                    }
+
+                    let mut connection_failed_devices = vec![];
+                    for device in devices {
+                        if let Err(e) = outgoing_clone.connect_device(&device).await {
+                            connection_failed_devices.push((device, e));
+                        }
+                    }
+
+                    if !connection_failed_devices.is_empty() {
+                        warn!(
+                            "Failed to connect to devices: {:?}",
+                            connection_failed_devices
+                        );
+                    }
+                }
+            }
+        })
     }
 
     /// 启动
@@ -450,7 +492,10 @@ impl ConnectionManager {
         }
 
         // 开启 outgoing 的监听新设备
-        self.listen_new_devices().await;
+        *self.listen_new_devices_handle.write().await = Some(self.listen_new_devices().await);
+        // 尝试连接离线的设备
+        *self.try_connect_offline_devices_handle.write().await =
+            Some(self.try_connect_offline_devices().await);
 
         info!("Connection manager started");
 
@@ -463,10 +508,17 @@ impl ConnectionManager {
     /// 2. 移除所有连接
     /// 3. 设置所有设备为 offline
     pub async fn stop(&self) {
+        if let Some(handle) = self.listen_new_devices_handle.write().await.take() {
+            handle.abort();
+        }
+        if let Some(handle) = self.try_connect_offline_devices_handle.write().await.take() {
+            handle.abort();
+        }
+
         self.outgoing.disconnect_all().await;
         self.incoming.disconnect_all().await;
 
-        for (_, ip_port) in self.addr_device_id_map.read().await.iter() {
+        for (ip_port, _) in self.addr_device_id_map.read().await.iter() {
             if let Ok(addr) = ip_port.parse::<SocketAddr>() {
                 self.remove_connection(MessageSource::IpPort(addr)).await;
             } else {

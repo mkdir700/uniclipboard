@@ -137,7 +137,7 @@ impl MessageHandler {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum MessageSource {
     IpPort(SocketAddr),
     DeviceId(DeviceId),
