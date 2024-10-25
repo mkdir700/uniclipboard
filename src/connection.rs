@@ -287,6 +287,7 @@ impl OutgoingConnectionManager {
     /// 断开所有连接
     pub async fn disconnect_all(&self) {
         let device_id = CONFIG.read().unwrap().device_id.clone();
+        // ?TODO: 是发送 WebSocketMessage::Offline 还是 Message::Close ?
         let _ = self
             .broadcast(&WebSocketMessage::Offline(device_id), &None)
             .await;
