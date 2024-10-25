@@ -261,10 +261,11 @@ impl OutgoingConnectionManager {
     async fn remove_connection(&self, id: &DeviceId) {
         self.disconnect(id).await;
         let mut clients = self.connections.write().await;
-        let client = clients.get_mut(id).unwrap();
-        client.2.abort();
-        client.3.abort();
-        clients.remove(id);
+        if let Some(client) = clients.get_mut(id) {
+            client.2.abort();
+            client.3.abort();
+            clients.remove(id);
+        }
     }
 
     #[allow(dead_code)]
@@ -285,8 +286,9 @@ impl OutgoingConnectionManager {
 
     /// 断开所有连接
     pub async fn disconnect_all(&self) {
+        let device_id = CONFIG.read().unwrap().device_id.clone();
         let _ = self
-            .broadcast(&WebSocketMessage::Offline("offline".to_string()), &None)
+            .broadcast(&WebSocketMessage::Offline(device_id), &None)
             .await;
     }
 
@@ -344,7 +346,7 @@ impl OutgoingConnectionManager {
 
                 for device_id in disconnected_devices {
                     self_clone.remove_connection(&device_id).await;
-                    info!("Health check: device {} is disconnected", device_id);
+                    info!("Health check: device [{}] is disconnected", device_id);
                 }
             }
         })
