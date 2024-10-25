@@ -1,7 +1,7 @@
 use crate::connection::ConnectionManager;
 use crate::message::WebSocketMessage;
 use crate::web::handlers::message_handler::{MessageHandler, MessageSource};
-use log::error;
+use log::{debug, error};
 use std::sync::Arc;
 use warp::ws::Message;
 
@@ -69,6 +69,10 @@ impl WebSocketMessageHandler {
                         }
                         WebSocketMessage::Register(register_device_message) => {
                             if let MessageSource::IpPort(addr) = message_source {
+                                debug!(
+                                    "Received register message: {:?}, source: {:?}",
+                                    register_device_message, addr
+                                );
                                 self.message_handler
                                     .handle_register(register_device_message, addr)
                                     .await;

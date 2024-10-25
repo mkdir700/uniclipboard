@@ -1,10 +1,10 @@
 use crate::config::CONFIG;
+use crate::connection::{ConnectionManager, DeviceId};
 use crate::device::{get_device_manager, Device, GLOBAL_DEVICE_MANAGER};
 use crate::message::{
     ClipboardSyncMessage, DeviceSyncInfo, DevicesSyncMessage, RegisterDeviceMessage,
     WebSocketMessage,
 };
-use crate::connection::{ConnectionManager, DeviceId};
 use log::{debug, error, info};
 use std::net::SocketAddr;
 use std::sync::Arc;
@@ -36,7 +36,10 @@ impl MessageHandler {
         mut data: DevicesSyncMessage,
         message_source: MessageSource,
     ) {
-        info!("Received device list sync message from {:?}", message_source);
+        info!(
+            "Received device list sync message from {:?}",
+            message_source
+        );
 
         let devices = data
             .devices
@@ -115,6 +118,12 @@ impl MessageHandler {
     ) {
         let device_id = register_device_message.id.clone();
         let ip_port = format!("{}:{}", addr.ip(), addr.port());
+
+        // 设置设备在线
+        if let Err(e) = GLOBAL_DEVICE_MANAGER.set_online(&device_id) {
+            error!("Failed to set device {} online: {}", device_id, e);
+        }
+
         self.connection_manager
             .update_device_ip_port(device_id, ip_port)
             .await;

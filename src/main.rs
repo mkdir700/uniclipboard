@@ -90,7 +90,7 @@ async fn main() -> Result<()> {
         .set_webserver(app_context.webserver)
         .set_local_clipboard(app_context.local_clipboard)
         .set_remote_sync(app_context.remote_sync_manager)
-        // .set_key_mouse_monitor(key_mouse_monitor)
+        .set_connection_manager(app_context.connection_manager)
         .build()?;
 
     match app.start().await {

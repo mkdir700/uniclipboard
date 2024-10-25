@@ -196,6 +196,20 @@ impl DeviceManager {
         Ok(())
     }
 
+    /// 设置设备在线
+    pub fn set_online(&self, device_id: &str) -> Result<()> {
+        let mut conn = DB_POOL.get_connection()?;
+        dao::device::update_device_status(&mut conn, device_id, DeviceStatus::Online as i32)?;
+        Ok(())
+    }
+
+    /// 设置设备离线
+    pub fn set_offline(&self, device_id: &str) -> Result<()> {
+        let mut conn = DB_POOL.get_connection()?;
+        dao::device::update_device_status(&mut conn, device_id, DeviceStatus::Offline as i32)?;
+        Ok(())
+    }
+
     /// 添加设备，如果设备已存在，则更新设备
     pub fn add(&self, device: Device) -> Result<()> {
         let mut conn = DB_POOL.get_connection()?;
@@ -272,6 +286,7 @@ impl DeviceManager {
         Ok(offline_devices)
     }
 
+    #[allow(dead_code)]
     pub fn remove(&self, device_id: &str) -> Result<()> {
         let mut conn = DB_POOL.get_connection()?;
         dao::device::delete_device(&mut conn, device_id)?;
