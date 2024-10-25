@@ -98,3 +98,16 @@ pub fn clear_devices(conn: &mut SqliteConnection) -> Result<()> {
         .context("Failed to clear devices")?;
     Ok(())
 }
+
+pub fn update_device_status(
+    conn: &mut SqliteConnection,
+    id: &str,
+    status: i32,
+) -> Result<()> {
+    diesel::update(devices::table.find(id))
+        .set(devices::status.eq(status))
+        .execute(conn)
+        .context("Failed to set device offline")?;
+    Ok(())
+}
+
