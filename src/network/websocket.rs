@@ -9,9 +9,9 @@ use crate::message::WebSocketMessage;
 use anyhow::Result;
 use futures::StreamExt;
 use futures_util::SinkExt;
-use log::debug;
 use log::error;
 use log::info;
+use log::trace;
 use log::warn;
 use std::sync::atomic::AtomicBool;
 use std::sync::atomic::Ordering;
@@ -344,7 +344,7 @@ impl WebSocketClient {
         let join_handle = tokio::spawn(async move {
             if let Ok(msg) = rx.recv().await {
                 if let Message::Pong(msg) = msg {
-                    debug!("Ping pong result: {:?}", msg);
+                    trace!("Ping pong result: {:?}", msg);
                     return msg == rand_bytes_clone;
                 }
             }
@@ -353,7 +353,7 @@ impl WebSocketClient {
 
         // 发送 ping 消息，并在 timeout 时间内等待 pong 消息
         let result = tokio::time::timeout(timeout, async move {
-            debug!("Sending ping message, {:?}", ping_message);
+            trace!("Sending ping message, {:?}", ping_message);
             if let Err(e) = self.send_raw(ping_message).await {
                 error!("Failed to send ping message: {}", e);
             }

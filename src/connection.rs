@@ -245,7 +245,7 @@ impl OutgoingConnectionManager {
             loop {
                 interval.tick().await;
                 if !arc_client_clone.clone().read().await.is_connected() {
-                    info!("Health check: device is disconnected");
+                    info!("Health check: device [{}] is disconnected", id_clone);
                     break;
                 }
             }
