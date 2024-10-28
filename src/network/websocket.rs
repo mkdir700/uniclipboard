@@ -9,6 +9,7 @@ use crate::message::WebSocketMessage;
 use anyhow::Result;
 use futures::StreamExt;
 use futures_util::SinkExt;
+use log::debug;
 use log::error;
 use log::info;
 use log::warn;
@@ -354,6 +355,7 @@ impl WebSocketClient {
 
         // 发送 ping 消息，并在 timeout 时间内等待 pong 消息
         let result = tokio::time::timeout(timeout, async move {
+            debug!("Sending ping message, {:?}", ping_message);
             if let Err(e) = self.send_raw(ping_message).await {
                 error!("Failed to send ping message: {}", e);
             }
@@ -362,7 +364,10 @@ impl WebSocketClient {
         .await?;
 
         match result {
-            Ok(v) => Ok(v),
+            Ok(v) => {
+                debug!("Ping pong result: {}", v);
+                Ok(v)
+            },
             Err(e) => Err(anyhow::anyhow!("Ping timeout: {}", e)),
         }
     }
