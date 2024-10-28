@@ -15,7 +15,7 @@ use tokio::sync::{broadcast, mpsc, RwLock};
 use tokio::task::JoinHandle;
 use tokio::time::interval;
 use tokio_tungstenite::tungstenite::http::Uri;
-use tokio_tungstenite::tungstenite::Message;
+use tokio_tungstenite::tungstenite::Message as TungsteniteMessage;
 use warp::ws::Message as WarpMessage;
 
 pub type DeviceId = String;
@@ -144,14 +144,14 @@ pub struct OutgoingConnectionManager {
                 DeviceId,
                 (
                     Arc<RwLock<WebSocketClient>>,
-                    broadcast::Receiver<Message>,
+                    broadcast::Receiver<TungsteniteMessage>,
                     tokio::task::JoinHandle<()>,
                     tokio::task::JoinHandle<()>,
                 ),
             >,
         >,
     >,
-    messages_tx: Arc<broadcast::Sender<(String, WarpMessage)>>,
+    messages_tx: Arc<broadcast::Sender<(String, TungsteniteMessage)>>,
 }
 
 impl OutgoingConnectionManager {
@@ -208,7 +208,7 @@ impl OutgoingConnectionManager {
 
     pub async fn subscribe_outgoing_connections_message(
         &self,
-    ) -> broadcast::Receiver<(String, WarpMessage)> {
+    ) -> broadcast::Receiver<(String, TungsteniteMessage)> {
         self.messages_tx.subscribe()
     }
 
@@ -231,8 +231,7 @@ impl OutgoingConnectionManager {
             loop {
                 let message = message_rx.recv().await;
                 if let Ok(message) = message {
-                    let msg = WarpMessage::text(message.to_string());
-                    let _ = outgoing_connections_message_tx.send((id_clone.clone(), msg));
+                    let _ = outgoing_connections_message_tx.send((id_clone.clone(), message));
                 }
             }
         });

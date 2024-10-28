@@ -3,7 +3,8 @@ use crate::message::WebSocketMessage;
 use crate::web::handlers::message_handler::{MessageHandler, MessageSource};
 use log::{debug, error};
 use std::sync::Arc;
-use warp::ws::Message;
+use tokio_tungstenite::tungstenite::protocol::Message as TungsteniteMessage;
+use warp::ws::Message as WarpMessage;
 
 #[derive(Clone)]
 pub struct WebSocketMessageHandler {
@@ -34,15 +35,23 @@ impl WebSocketMessageHandler {
             loop {
                 let message = rx.recv().await;
                 if let Ok((device_id, message)) = message {
-                    self_clone
-                        .handle_message(message, MessageSource::DeviceId(device_id))
-                        .await;
+                    match message {
+                        TungsteniteMessage::Text(text) => {
+                            self_clone
+                                .handle_message(
+                                    WarpMessage::text(text),
+                                    MessageSource::DeviceId(device_id),
+                                )
+                                .await;
+                        }
+                        _ => {}
+                    }
                 }
             }
         });
     }
 
-    pub async fn handle_message(&self, msg: Message, message_source: MessageSource) {
+    pub async fn handle_message(&self, msg: WarpMessage, message_source: MessageSource) {
         if msg.is_text() {
             if let Ok(text) = msg.to_str() {
                 if text == "connect" {

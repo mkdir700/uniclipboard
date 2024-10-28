@@ -46,7 +46,7 @@ pub struct WebSocketClient {
         >,
     >,
     message_tx: Arc<broadcast::Sender<Message>>,
-    message_join_handle: Arc<Option<tokio::task::JoinHandle<()>>>,
+    message_join_handle: Arc<RwLock<Option<tokio::task::JoinHandle<()>>>>,
     health_check_join_handle: Arc<RwLock<Option<tokio::task::JoinHandle<()>>>>,
     connected: Arc<AtomicBool>,
 }
@@ -59,7 +59,7 @@ impl WebSocketClient {
             writer: Arc::new(None),
             reader: Arc::new(None),
             message_tx: Arc::new(tx),
-            message_join_handle: Arc::new(None),
+            message_join_handle: Arc::new(RwLock::new(None)),
             health_check_join_handle: Arc::new(RwLock::new(None)),
             connected: Arc::new(AtomicBool::new(false)),
         }
@@ -71,7 +71,7 @@ impl WebSocketClient {
         let message_tx = self.message_tx.clone();
         let connected = self.connected.clone();
 
-        self.message_join_handle = Arc::new(Some(tokio::spawn(async move {
+        *self.message_join_handle.write().await = Some(tokio::spawn(async move {
             loop {
                 if let Some(reader) = reader.as_ref() {
                     let mut reader = reader.lock().await;
@@ -97,15 +97,12 @@ impl WebSocketClient {
             info!("WebSocket message handler stopped");
             // TODO!: 修改 connected 状态为 false
             connected.store(false, Ordering::Relaxed);
-        })));
+        }));
     }
 
     /// 停止收集消息的异步任务
     async fn stop_collect_messages(&mut self) {
-        if let Some(handle) = Arc::get_mut(&mut self.message_join_handle)
-            .expect("Arc should be unique")
-            .take()
-        {
+        if let Some(handle) = self.message_join_handle.write().await.take() {
             handle.abort();
         }
     }
@@ -347,6 +344,7 @@ impl WebSocketClient {
         let join_handle = tokio::spawn(async move {
             if let Ok(msg) = rx.recv().await {
                 if let Message::Pong(msg) = msg {
+                    debug!("Ping pong result: {:?}", msg);
                     return msg == rand_bytes_clone;
                 }
             }
@@ -364,10 +362,7 @@ impl WebSocketClient {
         .await?;
 
         match result {
-            Ok(v) => {
-                debug!("Ping pong result: {}", v);
-                Ok(v)
-            },
+            Ok(v) => Ok(v),
             Err(e) => Err(anyhow::anyhow!("Ping timeout: {}", e)),
         }
     }
