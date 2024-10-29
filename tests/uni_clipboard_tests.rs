@@ -4,19 +4,16 @@ use chrono::Utc;
 use serial_test::serial;
 use std::env;
 use std::fs;
-use std::net::SocketAddr;
-use std::{sync::Arc, time::Duration};
-use uniclipboard::web::WebServer;
+use std::time::Duration;
 use uniclipboard::{
-    clipboard::LocalClipboard,
     config::CONFIG,
-    remote_sync::{RemoteSyncManager, WebSocketSync},
     uni_clipboard::{UniClipboard, UniClipboardBuilder},
-    RemoteSyncManagerTrait,
 };
-use uniclipboard::{Config, Payload, WebSocketHandler, WebSocketMessageHandler};
+use uniclipboard::{Config, Payload};
 
 mod tests {
+    use uniclipboard::context::AppContextBuilder;
+
     use super::*;
 
     fn setup_test_env() {
@@ -49,25 +46,17 @@ mod tests {
 
     // 辅助函数：创建测试用的 UniClipboard 实例
     async fn create_test_uni_clipboard(config: Config) -> Result<UniClipboard> {
-        let local_clipboard = Arc::new(LocalClipboard::new());
-        let remote_sync_manager = Arc::new(RemoteSyncManager::new());
-        let websocket_message_handler = Arc::new(WebSocketMessageHandler::new());
-        let websocket_handler = Arc::new(WebSocketHandler::new(websocket_message_handler.clone()));
-        let websocket_sync = Arc::new(WebSocketSync::new(websocket_message_handler));
-        let webserver = WebServer::new(
-            SocketAddr::new(
-                config.webserver_addr.unwrap().parse()?,
-                config.webserver_port.unwrap(),
-            ),
-            websocket_handler,
-        );
-
-        remote_sync_manager.set_sync_handler(websocket_sync).await;
+        let app_context = AppContextBuilder::new(config).build().await?;
+        let remote_sync_manager = app_context.remote_sync_manager;
+        let webserver = app_context.webserver;
+        let local_clipboard = app_context.local_clipboard;
+        let connection_manager = app_context.connection_manager;
 
         UniClipboardBuilder::new()
             .set_webserver(webserver)
             .set_local_clipboard(local_clipboard)
             .set_remote_sync(remote_sync_manager)
+            .set_connection_manager(connection_manager)
             .build()
     }
 
@@ -123,9 +112,11 @@ mod tests {
     #[cfg_attr(not(feature = "integration_tests"), ignore)]
     #[serial]
     async fn test_uni_clipboard_client_server_sync() -> Result<()> {
-        let config = setup_config();
+        let mut config = setup_config();
+        config.webserver_port = Some(8333);
         // 创建服务器和客户端实例
         let server = create_test_uni_clipboard(config.clone()).await?;
+        config.webserver_port = Some(8334);
         let client = create_test_uni_clipboard(config).await?;
 
         // 启动服务器和客户端
@@ -154,9 +145,11 @@ mod tests {
     #[cfg_attr(not(feature = "integration_tests"), ignore)]
     #[serial]
     async fn test_uni_clipboard_server_to_client_sync() -> Result<()> {
-        let config = setup_config();
+        let mut config = setup_config();
+        config.webserver_port = Some(8333);
         // 创建服务器和客户端实例
         let server = create_test_uni_clipboard(config.clone()).await?;
+        config.webserver_port = Some(8334);
         let client = create_test_uni_clipboard(config).await?;
 
         // 启动服务器和客户端

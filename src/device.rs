@@ -157,7 +157,7 @@ impl From<&DbDevice> for Device {
             db_device.server_port.map(|p| p as u16),
         );
         device.self_device = db_device.self_device;
-        device.status = DeviceStatus::try_from(device.status).unwrap_or(DeviceStatus::Unknown);
+        device.status = DeviceStatus::try_from(db_device.status).unwrap_or(DeviceStatus::Unknown);
         device.updated_at = Some(db_device.updated_at);
         device
     }
@@ -193,6 +193,20 @@ impl DeviceManager {
         } else {
             return Err(anyhow::anyhow!("Device not found"));
         }
+        Ok(())
+    }
+
+    /// 设置设备在线
+    pub fn set_online(&self, device_id: &str) -> Result<()> {
+        let mut conn = DB_POOL.get_connection()?;
+        dao::device::update_device_status(&mut conn, device_id, DeviceStatus::Online as i32)?;
+        Ok(())
+    }
+
+    /// 设置设备离线
+    pub fn set_offline(&self, device_id: &str) -> Result<()> {
+        let mut conn = DB_POOL.get_connection()?;
+        dao::device::update_device_status(&mut conn, device_id, DeviceStatus::Offline as i32)?;
         Ok(())
     }
 
@@ -262,7 +276,6 @@ impl DeviceManager {
     }
 
     /// 获取离线设备
-    #[allow(dead_code)]
     pub fn get_offline_devices(&self) -> Result<Vec<Device>> {
         let devices = self.get_all_devices()?;
         let offline_devices = devices
@@ -272,6 +285,7 @@ impl DeviceManager {
         Ok(offline_devices)
     }
 
+    #[allow(dead_code)]
     pub fn remove(&self, device_id: &str) -> Result<()> {
         let mut conn = DB_POOL.get_connection()?;
         dao::device::delete_device(&mut conn, device_id)?;
@@ -324,6 +338,10 @@ impl DeviceManager {
 }
 
 #[cfg(test)]
+use serial_test::serial;
+
+#[cfg(test)]
+#[serial]
 mod tests {
     use super::*;
     use chrono::Utc;
@@ -368,12 +386,6 @@ mod tests {
                 println!("Failed to remove database file: {}", e);
             });
         }
-    }
-
-    // 在模块结束时调用 cleanup
-    #[ctor::dtor]
-    fn auto_cleanup() {
-        cleanup();
     }
 
     #[test]

@@ -10,7 +10,7 @@ use uniclipboard::{LocalClipboard, Payload, LocalClipboardTrait};
 #[cfg_attr(not(feature = "integration_tests"), ignore)]
 #[serial]
 async fn test_local_clipboard_write_and_read() {
-    let handler = LocalClipboard::new();
+    let handler = LocalClipboard::new().unwrap();
 
     // 准备测试数据
     let test_content = "测试剪贴板内容";
@@ -32,7 +32,7 @@ async fn test_local_clipboard_write_and_read() {
 #[cfg_attr(not(feature = "integration_tests"), ignore)]
 #[serial]
 async fn test_local_clipboard_pull() {
-    let handler = LocalClipboard::new();
+    let handler = LocalClipboard::new().unwrap();
 
     // 准备初始测试数据
     let initial_content = "123";
@@ -45,7 +45,7 @@ async fn test_local_clipboard_pull() {
 
     // 在另一个任务中更改剪贴板内容
     tokio::spawn(async move {
-        let handler_clone = LocalClipboard::new();
+        let handler_clone = LocalClipboard::new().unwrap();
         let new_content = "456";
         let new_payload =
             Payload::new_text(Bytes::from(new_content), "local".to_string(), Utc::now());
@@ -71,7 +71,7 @@ async fn test_local_clipboard_pull() {
 #[serial]
 async fn test_start_monitoring() {
     // 创建 LocalClipboard 实例
-    let local_clipboard = LocalClipboard::new();
+    let local_clipboard = LocalClipboard::new().unwrap();
 
     // 启动监控
     let mut receiver = local_clipboard.start_monitoring().await.expect("Failed to start monitoring");
@@ -126,7 +126,7 @@ async fn test_start_monitoring() {
 #[serial]
 async fn test_pause_and_resume() {
     // 创建 LocalClipboard 实例
-    let local_clipboard = LocalClipboard::new();
+    let local_clipboard = LocalClipboard::new().unwrap();
 
     // 启动监控
     let mut receiver = local_clipboard.start_monitoring().await.expect("Failed to start monitoring");

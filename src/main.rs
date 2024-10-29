@@ -1,6 +1,8 @@
 mod cli;
 mod clipboard;
 mod config;
+mod connection;
+mod context;
 mod db;
 mod device;
 mod encrypt;
@@ -17,23 +19,17 @@ mod schema;
 mod uni_clipboard;
 mod utils;
 mod web;
+use crate::context::AppContextBuilder;
 use anyhow::Result;
 use console::style;
 use device::{get_device_manager, Device};
 use log::{error, info};
 use std::env;
-use std::sync::Arc;
 use uni_clipboard::UniClipboardBuilder;
 use utils::get_local_ip;
-use web::{WebServer, WebSocketMessageHandler};
 
 use crate::cli::{interactive_input, parse_args};
-use crate::clipboard::LocalClipboard;
 use crate::config::Config;
-use crate::remote_sync::RemoteSyncManagerTrait;
-use crate::remote_sync::{RemoteSyncManager, WebSocketSync};
-use crate::web::WebSocketHandler;
-use std::net::SocketAddr;
 
 // 新增函数用于显示标志
 fn display_banner(local_ip: String) {
@@ -85,33 +81,17 @@ async fn main() -> Result<()> {
         );
         manager.add(device.clone())?;
         manager.set_self_device(&device)?;
+        manager.set_online(&config.device_id)?;
     }
 
-    // 暂时禁用
-    // let key_mouse_monitor = Arc::new(KeyMouseMonitor::new(Duration::from_secs(
-    //     config.key_mouse_monitor_sleep_timeout.unwrap(),
-    // )));
-
-    let local_clipboard = Arc::new(LocalClipboard::new());
-    let remote_sync_manager = Arc::new(RemoteSyncManager::new());
-    let websocket_message_handler = Arc::new(WebSocketMessageHandler::new());
-    let websocket_handler = Arc::new(WebSocketHandler::new(websocket_message_handler.clone()));
-    let websocket_sync = Arc::new(WebSocketSync::new(websocket_message_handler.clone()));
-    let webserver = WebServer::new(
-        SocketAddr::new(
-            config.webserver_addr.unwrap().parse()?,
-            config.webserver_port.unwrap(),
-        ),
-        websocket_handler,
-    );
-
-    remote_sync_manager.set_sync_handler(websocket_sync).await;
+    // 创建 AppContext
+    let app_context = AppContextBuilder::new(config).build().await?;
 
     let app = UniClipboardBuilder::new()
-        .set_webserver(webserver)
-        .set_local_clipboard(local_clipboard)
-        .set_remote_sync(remote_sync_manager)
-        // .set_key_mouse_monitor(key_mouse_monitor)
+        .set_webserver(app_context.webserver)
+        .set_local_clipboard(app_context.local_clipboard)
+        .set_remote_sync(app_context.remote_sync_manager)
+        .set_connection_manager(app_context.connection_manager)
         .build()?;
 
     match app.start().await {

@@ -1,15 +1,16 @@
 use anyhow::Result;
 use log::{error, info};
+use std::env;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::select;
 use tokio::signal::ctrl_c;
 use tokio::sync::{mpsc, RwLock};
 use tokio::time::sleep;
-use std::env;
 
 use crate::clipboard::LocalClipboardTrait;
 use crate::config::get_config_dir;
+use crate::connection::ConnectionManager;
 use crate::db::DB_POOL;
 use crate::key_mouse_monitor::KeyMouseMonitorTrait;
 use crate::message::{ClipboardSyncMessage, Payload};
@@ -24,6 +25,7 @@ pub struct UniClipboard {
     is_paused: Arc<RwLock<bool>>,
     last_payload: Arc<RwLock<Option<Payload>>>,
     webserver: Arc<WebServer>,
+    connection_manager: Arc<ConnectionManager>,
 }
 
 impl UniClipboard {
@@ -32,6 +34,7 @@ impl UniClipboard {
         clipboard: Arc<dyn LocalClipboardTrait>,
         remote_sync: Arc<dyn RemoteSyncManagerTrait>,
         key_mouse_monitor: Option<Arc<dyn KeyMouseMonitorTrait>>,
+        connection_manager: Arc<ConnectionManager>,
     ) -> Self {
         Self {
             clipboard,
@@ -41,17 +44,16 @@ impl UniClipboard {
             is_paused: Arc::new(RwLock::new(false)),
             last_payload: Arc::new(RwLock::new(None)),
             webserver,
+            connection_manager,
         }
     }
 
     #[cfg_attr(not(feature = "integration_tests"), ignore)]
-    #[allow(dead_code)]
     pub fn get_clipboard(&self) -> Arc<dyn LocalClipboardTrait> {
         self.clipboard.clone()
     }
 
     #[cfg_attr(not(feature = "integration_tests"), ignore)]
-    #[allow(dead_code)]
     pub fn get_remote_sync(&self) -> Arc<dyn RemoteSyncManagerTrait> {
         self.remote_sync.clone()
     }
@@ -72,8 +74,10 @@ impl UniClipboard {
                 config_dir.join("uniclipboard.db").to_str().unwrap(),
             );
         }
-
         DB_POOL.init()?;
+
+        // 与其他设备建立连接
+        self.connection_manager.start().await?;
 
         // 启动本地剪切板监听
         let clipboard_receiver = self.clipboard.start_monitoring().await?;
@@ -193,6 +197,9 @@ impl UniClipboard {
         }
         *is_running = false;
 
+        // 停止连接管理器
+        self.connection_manager.stop().await;
+
         // 停止本地剪切板监听
         self.clipboard.stop_monitoring().await?;
 
@@ -281,6 +288,7 @@ pub struct UniClipboardBuilder {
     clipboard: Option<Arc<dyn LocalClipboardTrait>>,
     remote_sync: Option<Arc<dyn RemoteSyncManagerTrait>>,
     key_mouse_monitor: Option<Arc<dyn KeyMouseMonitorTrait>>,
+    connection_manager: Option<Arc<ConnectionManager>>,
 }
 
 impl UniClipboardBuilder {
@@ -290,6 +298,7 @@ impl UniClipboardBuilder {
             clipboard: None,
             remote_sync: None,
             key_mouse_monitor: None,
+            connection_manager: None,
         }
     }
 
@@ -305,6 +314,11 @@ impl UniClipboardBuilder {
 
     pub fn set_remote_sync(mut self, remote_sync: Arc<dyn RemoteSyncManagerTrait>) -> Self {
         self.remote_sync = Some(remote_sync);
+        self
+    }
+
+    pub fn set_connection_manager(mut self, connection_manager: Arc<ConnectionManager>) -> Self {
+        self.connection_manager = Some(connection_manager);
         self
     }
 
@@ -328,11 +342,15 @@ impl UniClipboardBuilder {
         let webserver = self
             .webserver
             .ok_or_else(|| anyhow::anyhow!("No web server set"))?;
+        let connection_manager = self
+            .connection_manager
+            .ok_or_else(|| anyhow::anyhow!("No connection manager set"))?;
         Ok(UniClipboard::new(
             Arc::new(webserver),
             clipboard,
             remote_sync,
             self.key_mouse_monitor,
+            connection_manager,
         ))
     }
 }
@@ -340,8 +358,8 @@ impl UniClipboardBuilder {
 #[cfg(test)]
 mod tests {
     use crate::{
-        message::ClipboardSyncMessage, remote_sync::RemoteClipboardSync, WebSocketHandler,
-        WebSocketMessageHandler,
+        connection::ConnectionManager, message::ClipboardSyncMessage,
+        remote_sync::RemoteClipboardSync, web::WebSocketHandler, web::WebSocketMessageHandler,
     };
 
     use super::*;
@@ -349,9 +367,9 @@ mod tests {
     use async_trait::async_trait;
     use bytes::Bytes;
     use serial_test::serial;
-    use std::{net::SocketAddr, sync::Arc, env};
-    use tokio::sync::Mutex;
     use std::fs;
+    use std::{env, net::SocketAddr, sync::Arc};
+    use tokio::sync::Mutex;
 
     fn setup_test_env() {
         env::set_var("DATABASE_URL", "uniclipboard_tests.db");
@@ -477,8 +495,13 @@ mod tests {
         let key_mouse_monitor = Arc::new(MockKeyMouseMonitor {
             is_sleep: Arc::new(Mutex::new(false)),
         });
-        let websocket_message_handler = Arc::new(WebSocketMessageHandler::new());
-        let websocket_handler = Arc::new(WebSocketHandler::new(websocket_message_handler));
+        let connection_manager = Arc::new(ConnectionManager::new());
+        let websocket_message_handler =
+            Arc::new(WebSocketMessageHandler::new(connection_manager.clone()));
+        let websocket_handler = Arc::new(WebSocketHandler::new(
+            websocket_message_handler.clone(),
+            connection_manager.clone(),
+        ));
         let webserver = WebServer::new(
             SocketAddr::new("0.0.0.0".parse().unwrap(), 8114),
             websocket_handler,
@@ -489,6 +512,7 @@ mod tests {
             .set_remote_sync(remote_sync)
             .set_key_mouse_monitor(key_mouse_monitor)
             .set_webserver(webserver)
+            .set_connection_manager(connection_manager)
             .build()
             .expect("Failed to build UniClipboard");
 
@@ -505,8 +529,13 @@ mod tests {
         let remote_sync = Arc::new(MockRemoteSync {
             content: Arc::new(Mutex::new(None)),
         });
-        let websocket_message_handler = Arc::new(WebSocketMessageHandler::new());
-        let websocket_handler = Arc::new(WebSocketHandler::new(websocket_message_handler));
+        let connection_manager = Arc::new(ConnectionManager::new());
+        let websocket_message_handler =
+            Arc::new(WebSocketMessageHandler::new(connection_manager.clone()));
+        let websocket_handler = Arc::new(WebSocketHandler::new(
+            websocket_message_handler.clone(),
+            connection_manager.clone(),
+        ));
         let webserver = WebServer::new(
             SocketAddr::new("0.0.0.0".parse().unwrap(), 8114),
             websocket_handler,
@@ -516,6 +545,7 @@ mod tests {
             .set_local_clipboard(clipboard.clone())
             .set_remote_sync(remote_sync.clone())
             .set_webserver(webserver)
+            .set_connection_manager(connection_manager)
             .build()
             .expect("Failed to build UniClipboard");
 
@@ -551,8 +581,13 @@ mod tests {
         let remote_sync = Arc::new(MockRemoteSync {
             content: Arc::new(Mutex::new(None)),
         });
-        let websocket_message_handler = Arc::new(WebSocketMessageHandler::new());
-        let websocket_handler = Arc::new(WebSocketHandler::new(websocket_message_handler));
+        let connection_manager = Arc::new(ConnectionManager::new());
+        let websocket_message_handler =
+            Arc::new(WebSocketMessageHandler::new(connection_manager.clone()));
+        let websocket_handler = Arc::new(WebSocketHandler::new(
+            websocket_message_handler.clone(),
+            connection_manager.clone(),
+        ));
         let webserver = WebServer::new(
             SocketAddr::new("0.0.0.0".parse().unwrap(), 8114),
             websocket_handler,
@@ -562,6 +597,7 @@ mod tests {
             .set_local_clipboard(clipboard)
             .set_remote_sync(remote_sync)
             .set_webserver(webserver)
+            .set_connection_manager(connection_manager)
             .build()
             .expect("Failed to build UniClipboard");
 

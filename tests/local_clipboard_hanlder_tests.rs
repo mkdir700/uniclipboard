@@ -53,7 +53,7 @@ async fn test_write_image_to_local_clipboard() -> Result<(), Box<dyn std::error:
         "png".to_string(),
         image_bytes.len(),
     );
-    let local_handler = LocalClipboard::new();
+    let local_handler = LocalClipboard::new().unwrap();
     local_handler.write(payload.clone()).await?;
 
     tokio::time::sleep(std::time::Duration::from_secs(5)).await;
@@ -68,7 +68,7 @@ async fn test_read_write_clipboard_text() {
     let mut clipboard = Clipboard::new().unwrap();
     clipboard.set_text("random text").unwrap();
 
-    let local_handler = LocalClipboard::new();
+    let local_handler = LocalClipboard::new().unwrap();
     let payload = local_handler.read().await.unwrap();
     if let Payload::Text(text_payload) = payload {
         assert_ne!(text_payload.text(), test_text);
@@ -113,7 +113,7 @@ async fn test_read_write_clipboard_image() -> Result<(), Box<dyn std::error::Err
         "jpeg".to_string(),
         image_bytes.len(),
     );
-    let local_handler = LocalClipboard::new();
+    let local_handler = LocalClipboard::new().unwrap();
     local_handler.write(payload).await?;
     Ok(())
 }
@@ -123,7 +123,7 @@ async fn test_read_write_clipboard_image() -> Result<(), Box<dyn std::error::Err
 #[cfg_attr(not(feature = "integration_tests"), ignore)]
 #[serial]
 async fn test_write_two_images_and_read() -> Result<(), Box<dyn std::error::Error>> {
-    let local_handler = LocalClipboard::new();
+    let local_handler = LocalClipboard::new().unwrap();
     // 1. 读取测试图片
     let image_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("test_resources")

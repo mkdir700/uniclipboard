@@ -16,6 +16,8 @@ use uniclipboard::{
 };
 
 mod tests {
+    use tokio_tungstenite::tungstenite::Message;
+    use uniclipboard::connection::ConnectionManager;
     use uniclipboard::db::DB_POOL;
 
     use super::*;
@@ -57,10 +59,19 @@ mod tests {
         config.clone()
     }
 
-    fn setup_webserver() -> WebServerWrapper {
+    async fn setup_webserver() -> WebServerWrapper {
         let config = setup_config();
-        let websocket_message_handler = Arc::new(WebSocketMessageHandler::new());
-        let websocket_handler = Arc::new(WebSocketHandler::new(websocket_message_handler.clone()));
+        let connection_manager = Arc::new(ConnectionManager::new());
+        let websocket_message_handler =
+            Arc::new(WebSocketMessageHandler::new(connection_manager.clone()));
+        let websocket_handler = Arc::new(WebSocketHandler::new(
+            websocket_message_handler.clone(),
+            connection_manager.clone(),
+        ));
+        let websocket_sync = Arc::new(WebSocketSync::new(
+            websocket_message_handler.clone(),
+            connection_manager.clone(),
+        ));
         let webserver = WebServer::new(
             SocketAddr::new(
                 config.webserver_addr.unwrap().parse().unwrap(),
@@ -68,19 +79,19 @@ mod tests {
             ),
             websocket_handler.clone(),
         );
-        let websocket_sync = WebSocketSync::new(websocket_message_handler.clone());
+
         WebServerWrapper {
             websocket_message_handler: websocket_message_handler.clone(),
             websocket_handler: websocket_handler.clone(),
             webserver: Arc::new(webserver),
-            websocket_sync: Arc::new(websocket_sync),
+            websocket_sync: websocket_sync.clone(),
         }
     }
 
     #[tokio::test]
     #[serial]
     async fn test_websocket_run() {
-        let w = setup_webserver();
+        let w = setup_webserver().await;
         let webserver_clone = Arc::clone(&w.webserver);
         tokio::spawn(async move { webserver_clone.run().await });
 
@@ -96,7 +107,7 @@ mod tests {
     #[tokio::test]
     #[serial]
     async fn test_websocket_broadcast() {
-        let w = setup_webserver();
+        let w = setup_webserver().await;
         let webserver_clone = Arc::clone(&w.webserver);
         tokio::spawn(async move { webserver_clone.run().await });
         tokio::time::sleep(Duration::from_secs(1)).await;
@@ -112,6 +123,7 @@ mod tests {
 
         let websocket_message_handler_clone = Arc::clone(&w.websocket_message_handler);
         websocket_message_handler_clone
+            .connection_manager
             .broadcast(
                 &WebSocketMessage::DeviceListSync(DevicesSyncMessage {
                     devices: devices.iter().map(|d| DeviceSyncInfo::from(d)).collect(),
@@ -128,10 +140,13 @@ mod tests {
                 // 尝试10次，防止无限循环
                 match client1.receive_raw().await {
                     Ok(message) => match message {
-                        WebSocketMessage::DeviceListSync(data) => {
-                            received_correct_message = true;
-                            println!("收到 DeviceListSync 消息: {}", data.devices.len());
-                            break;
+                        Message::Text(text) => {
+                            let msg: WebSocketMessage = serde_json::from_str(&text).unwrap();
+                            if let WebSocketMessage::DeviceListSync(data) = msg {
+                                received_correct_message = true;
+                                println!("收到 DeviceListSync 消息: {}", data.devices.len());
+                                break;
+                            }
                         }
                         _ => {}
                     },
@@ -173,7 +188,7 @@ mod tests {
     #[tokio::test]
     #[serial]
     async fn test_websocket_subscribe() {
-        let w = setup_webserver();
+        let w = setup_webserver().await;
         let webserver_clone = Arc::clone(&w.webserver);
         tokio::spawn(async move { webserver_clone.run().await });
         tokio::time::sleep(Duration::from_secs(1)).await;
@@ -202,24 +217,21 @@ mod tests {
 
         let websocket_message_handler_clone = Arc::clone(&w.websocket_message_handler);
         let handle1 = tokio::spawn(async move {
-            match websocket_message_handler_clone
+            let mut rx = websocket_message_handler_clone
+                .connection_manager
                 .subscribe_clipboard_sync()
-                .await
-            {
-                Ok(Some(message)) => {
+                .await;
+            match rx.recv().await {
+                Ok(message) => {
                     println!("收到消息: {}", message);
                     true
-                }
-                Ok(None) => {
-                    println!("未收到消息");
-                    false
                 }
                 Err(e) => panic!("订阅失败: {}", e),
             }
         });
 
         // 等待 handle1 完成，设置5秒超时
-        match timeout(Duration::from_secs(5), handle1).await {
+        match timeout(Duration::from_secs(2), handle1).await {
             Ok(result) => {
                 // handle1 已完成，检查结果
                 match result {
@@ -246,7 +258,7 @@ mod tests {
     #[tokio::test]
     #[serial]
     async fn test_is_connected() {
-        let w = setup_webserver();
+        let w = setup_webserver().await;
         let webserver_clone = Arc::clone(&w.webserver);
         tokio::spawn(async move { webserver_clone.run().await });
         tokio::time::sleep(Duration::from_secs(1)).await;
@@ -256,11 +268,22 @@ mod tests {
             None,
             Some(8333),
         );
-        if let Err(_e) = w.websocket_sync.connect_device(&device1).await {
+        if let Err(_e) = w
+            .websocket_message_handler
+            .connection_manager
+            .outgoing
+            .connect_device(&device1)
+            .await
+        {
             println!("跳过");
         }
 
-        assert!(w.websocket_message_handler.is_connected(&device1).await);
+        assert!(
+            w.websocket_message_handler
+                .connection_manager
+                .is_connected(&device1)
+                .await
+        );
     }
 
     // / 测试订阅设备上下线
