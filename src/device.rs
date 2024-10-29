@@ -384,12 +384,6 @@ mod tests {
         }
     }
 
-    // 在模块结束时调用 cleanup
-    #[ctor::dtor]
-    fn auto_cleanup() {
-        cleanup();
-    }
-
     #[test]
     #[serial]
     fn test_device_manager() {
