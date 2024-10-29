@@ -512,6 +512,7 @@ mod tests {
             .set_remote_sync(remote_sync)
             .set_key_mouse_monitor(key_mouse_monitor)
             .set_webserver(webserver)
+            .set_connection_manager(connection_manager)
             .build()
             .expect("Failed to build UniClipboard");
 
@@ -544,6 +545,7 @@ mod tests {
             .set_local_clipboard(clipboard.clone())
             .set_remote_sync(remote_sync.clone())
             .set_webserver(webserver)
+            .set_connection_manager(connection_manager)
             .build()
             .expect("Failed to build UniClipboard");
 
@@ -595,6 +597,7 @@ mod tests {
             .set_local_clipboard(clipboard)
             .set_remote_sync(remote_sync)
             .set_webserver(webserver)
+            .set_connection_manager(connection_manager)
             .build()
             .expect("Failed to build UniClipboard");
 

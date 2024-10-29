@@ -50,11 +50,13 @@ mod tests {
         let remote_sync_manager = app_context.remote_sync_manager;
         let webserver = app_context.webserver;
         let local_clipboard = app_context.local_clipboard;
+        let connection_manager = app_context.connection_manager;
 
         UniClipboardBuilder::new()
             .set_webserver(webserver)
             .set_local_clipboard(local_clipboard)
             .set_remote_sync(remote_sync_manager)
+            .set_connection_manager(connection_manager)
             .build()
     }
 
@@ -110,9 +112,11 @@ mod tests {
     #[cfg_attr(not(feature = "integration_tests"), ignore)]
     #[serial]
     async fn test_uni_clipboard_client_server_sync() -> Result<()> {
-        let config = setup_config();
+        let mut config = setup_config();
+        config.webserver_port = Some(8333);
         // 创建服务器和客户端实例
         let server = create_test_uni_clipboard(config.clone()).await?;
+        config.webserver_port = Some(8334);
         let client = create_test_uni_clipboard(config).await?;
 
         // 启动服务器和客户端
@@ -141,9 +145,11 @@ mod tests {
     #[cfg_attr(not(feature = "integration_tests"), ignore)]
     #[serial]
     async fn test_uni_clipboard_server_to_client_sync() -> Result<()> {
-        let config = setup_config();
+        let mut config = setup_config();
+        config.webserver_port = Some(8333);
         // 创建服务器和客户端实例
         let server = create_test_uni_clipboard(config.clone()).await?;
+        config.webserver_port = Some(8334);
         let client = create_test_uni_clipboard(config).await?;
 
         // 启动服务器和客户端

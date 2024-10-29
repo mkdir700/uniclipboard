@@ -16,6 +16,7 @@ use uniclipboard::{
 };
 
 mod tests {
+    use tokio_tungstenite::tungstenite::Message;
     use uniclipboard::context::AppContextBuilder;
     use uniclipboard::db::DB_POOL;
 
@@ -121,10 +122,13 @@ mod tests {
                 // 尝试10次，防止无限循环
                 match client1.receive_raw().await {
                     Ok(message) => match message {
-                        WebSocketMessage::DeviceListSync(data) => {
-                            received_correct_message = true;
-                            println!("收到 DeviceListSync 消息: {}", data.devices.len());
-                            break;
+                        Message::Text(text) => {
+                            let msg: WebSocketMessage = serde_json::from_str(&text).unwrap();
+                            if let WebSocketMessage::DeviceListSync(data) = msg {
+                                received_correct_message = true;
+                                println!("收到 DeviceListSync 消息: {}", data.devices.len());
+                                break;
+                            }
                         }
                         _ => {}
                     },
@@ -246,7 +250,13 @@ mod tests {
             None,
             Some(8333),
         );
-        if let Err(_e) = w.websocket_sync.connect_device(&device1).await {
+        if let Err(_e) = w
+            .websocket_message_handler
+            .connection_manager
+            .outgoing
+            .connect_device(&device1)
+            .await
+        {
             println!("跳过");
         }
 
