@@ -338,6 +338,10 @@ impl DeviceManager {
 }
 
 #[cfg(test)]
+use serial_test::serial;
+
+#[cfg(test)]
+#[serial]
 mod tests {
     use super::*;
     use chrono::Utc;

@@ -14,6 +14,7 @@ use uniclipboard::{
 };
 
 #[cfg(test)]
+#[serial]
 mod tests {
     use uniclipboard::context::AppContextBuilder;
     use uniclipboard::db::DB_POOL;
@@ -68,6 +69,7 @@ mod tests {
 
     #[tokio::test]
     #[serial]
+    #[cfg(test)]
     async fn test_404() {
         let w = setup_webserver().await;
         let webserver_clone = Arc::clone(&w.webserver);
@@ -82,6 +84,7 @@ mod tests {
 
     #[tokio::test]
     #[serial]
+    #[cfg(test)]
     async fn test_get_device_list() {
         let w = setup_webserver().await;
         let webserver_clone = Arc::clone(&w.webserver);
