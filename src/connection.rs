@@ -3,6 +3,7 @@ use crate::device::get_device_manager;
 use crate::device::{subscribe_new_devices, Device, GLOBAL_DEVICE_MANAGER};
 use crate::message::{ClipboardSyncMessage, WebSocketMessage};
 use crate::network::WebSocketClient;
+use crate::web::handlers::client::IncommingWebsocketClient;
 use crate::web::handlers::message_handler::MessageSource;
 use anyhow::Result;
 use futures::future::join_all;
@@ -11,7 +12,7 @@ use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::Arc;
 use std::time::Duration;
-use tokio::sync::{broadcast, mpsc, RwLock};
+use tokio::sync::{broadcast, RwLock};
 use tokio::task::JoinHandle;
 use tokio::time::interval;
 use tokio_tungstenite::tungstenite::http::Uri;
@@ -20,7 +21,7 @@ use warp::ws::Message as WarpMessage;
 
 pub type DeviceId = String;
 pub type IpPort = String;
-pub type Clients = HashMap<IpPort, mpsc::UnboundedSender<Result<WarpMessage, warp::Error>>>;
+pub type Clients = HashMap<IpPort, IncommingWebsocketClient>;
 
 #[derive(Clone)]
 pub struct IncomingConnectionManager {
@@ -34,13 +35,9 @@ impl IncomingConnectionManager {
         }
     }
 
-    pub async fn add_connection(
-        &self,
-        ip_port: IpPort,
-        client: mpsc::UnboundedSender<Result<WarpMessage, warp::Error>>,
-    ) {
+    pub async fn add_connection(&self, client: IncommingWebsocketClient) {
         let mut clients = self.connections.write().await;
-        clients.insert(ip_port, client);
+        clients.insert(client.id(), client);
     }
 
     pub async fn remove_connection(&self, ip_port: &IpPort) {
@@ -61,7 +58,7 @@ impl IncomingConnectionManager {
 
         // send offline message
         if let Some(client) = client {
-            let _ = client.send(Ok(WarpMessage::close()));
+            let _ = client.stop().await;
         }
     }
 
@@ -76,7 +73,7 @@ impl IncomingConnectionManager {
         };
 
         let close_connections = clients.into_iter().map(|(id, tx)| async move {
-            if let Err(e) = tx.send(Ok(WarpMessage::close())) {
+            if let Err(e) = tx.send(WarpMessage::close()).await {
                 error!("Failed to send close message to client {}: {}", id, e);
             }
             // 等待一小段时间，让客户端有机会处理关闭消息
@@ -122,8 +119,7 @@ impl IncomingConnectionManager {
         let send_futures = futures
             .into_iter()
             .map(|(client_id, tx, message)| async move {
-                if let Err(e) = tx.send(Ok(message)) {
-                    eprintln!("向客户端 {} 发送消息时出错: {:?}", client_id, e);
+                if let Err(e) = tx.send(message).await {
                     error!("Failed to send message to {}: {}", client_id, e);
                     return Err(e);
                 }
@@ -473,20 +469,46 @@ impl ConnectionManager {
                 warn!("Peer device address or port is not set, so skip connecting to peer device");
             }
         } else {
-            let mut errors = vec![];
             info!("Start to connect to {} devices", devices.len());
-            for device in &devices {
-                self.outgoing
-                    .connect_device(device)
-                    .await
-                    .unwrap_or_else(|e| {
-                        errors.push(e);
-                    });
-            }
+            // 创建所有连接任务
+            let connection_futures: Vec<_> = devices
+                .iter()
+                .map(|device| {
+                    let device_clone = device.clone();
+                    async move {
+                        match self.outgoing.connect_device(&device_clone).await {
+                            Ok(_) => {
+                                info!("Successfully connected to device: {}", device_clone);
+                                Ok(device_clone.id.clone())
+                            }
+                            Err(e) => {
+                                warn!("Failed to connect to device {}: {}", device_clone, e);
+                                Err((device_clone.id.clone(), e))
+                            }
+                        }
+                    }
+                })
+                .collect();
+
+            // 并行执行所有连接
+            let results = join_all(connection_futures).await;
+
+            // 处理结果
+            let (successes, errors): (Vec<_>, Vec<_>) =
+                results.into_iter().partition(Result::is_ok);
+
+            info!("Connected to {} devices", successes.len());
             if !errors.is_empty() {
-                warn!("Failed to connect to devices: {:?}", errors);
+                warn!(
+                    "Failed to connect to {} devices: {:?}",
+                    errors.len(),
+                    errors
+                        .into_iter()
+                        .map(Result::unwrap_err)
+                        .collect::<Vec<_>>()
+                );
             } else {
-                info!("All devices connected");
+                info!("All devices connected successfully");
             }
         }
 

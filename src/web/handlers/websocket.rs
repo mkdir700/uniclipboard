@@ -1,9 +1,8 @@
 use std::net::SocketAddr;
 use std::sync::Arc;
 
-use futures::{FutureExt, StreamExt};
+use super::client::{IncommingWebsocketClient, WebSocketMessage};
 use log::{error, info};
-use tokio_stream::wrappers::UnboundedReceiverStream;
 use warp::ws::WebSocket;
 
 use crate::connection::ConnectionManager;
@@ -27,37 +26,34 @@ impl WebSocketHandler {
     }
 
     pub async fn client_connected(&self, ws: WebSocket, addr: Option<SocketAddr>) {
-        let (server_ws_sender, mut client_ws_rcv) = ws.split();
-        let (client_sender, client_rcv) = tokio::sync::mpsc::unbounded_channel();
-        let client_rcv = UnboundedReceiverStream::new(client_rcv);
-
-        let client_id = match addr {
-            Some(addr) => format!("{}:{}", addr.ip(), addr.port()),
-            None => String::new(),
+        let client = match addr {
+            Some(addr) => IncommingWebsocketClient::new(addr, ws),
+            None => return,
         };
-        if client_id.is_empty() {
-            error!("Client id is empty");
-            return;
-        }
+        match client.start().await {
+            Ok(_) => (),
+            Err(e) => {
+                error!("Failed to initialize client: {}", e);
+                return;
+            }
+        };
 
+        let client_id = client.id();
+
+        let mut rx = client.subscribe_messages();
         {
+            let client_id = client.id();
             self.connection_manager
                 .incoming
-                .add_connection(client_id.clone(), client_sender)
+                .add_connection(client)
                 .await;
-
             let count = self.connection_manager.incoming.count().await;
             info!("Client {} connected, current clients: {}", client_id, count);
         }
 
-        tokio::task::spawn(client_rcv.forward(server_ws_sender).map(|result| {
-            if let Err(e) = result {
-                error!("Error sending websocket msg to client: {}", e);
-            }
-        }));
-
         info!("Client [{}] connected", client_id);
-        while let Some(result) = client_ws_rcv.next().await {
+        loop {
+            let result = rx.recv().await;
             let msg = match result {
                 Ok(msg) => msg,
                 Err(e) => {
@@ -65,16 +61,21 @@ impl WebSocketHandler {
                     break;
                 }
             };
-            if let Some(addr) = addr {
-                self.message_handler
-                    .handle_message(msg, MessageSource::IpPort(addr))
-                    .await;
-            } else {
-                error!("Client [{}] connected, but addr is None", client_id);
+            match msg {
+                WebSocketMessage::Message(msg) => {
+                    if let Some(addr) = addr {
+                        self.message_handler
+                            .handle_message(msg, MessageSource::IpPort(addr))
+                            .await;
+                    } else {
+                        error!("Client [{}] connected, but addr is None", client_id);
+                    }
+                }
+                WebSocketMessage::Close => {
+                    break;
+                }
             }
         }
-        // ? 如果客户端意外中止，client_disconnected 是否会一定被调用到？
-        // ? If the client is terminated unexpectedly, will client_disconnected be called?
         if let Some(addr) = addr {
             self.client_disconnected(addr).await;
         }

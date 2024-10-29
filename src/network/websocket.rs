@@ -21,6 +21,7 @@ use tokio::net::TcpStream;
 use tokio::sync::broadcast;
 use tokio::sync::Mutex;
 use tokio::sync::RwLock;
+use tokio::time::timeout;
 use tokio_tungstenite::connect_async;
 use tokio_tungstenite::tungstenite::http::Uri;
 use tokio_tungstenite::tungstenite::Message;
@@ -236,7 +237,16 @@ impl WebSocketClient {
 
     /// 连接到服务器
     pub async fn connect(&mut self) -> Result<()> {
-        let (ws_stream, _response) = connect_async(self.uri.clone()).await?;
+        // 设置 3 秒超时
+        let connection_result =
+            timeout(Duration::from_secs(3), connect_async(self.uri.clone())).await;
+
+        // 处理超时和连接错误
+        let (ws_stream, _response) = match connection_result {
+            Ok(Ok(result)) => result,
+            Ok(Err(e)) => return Err(anyhow::anyhow!("Connection failed: {}", e)),
+            Err(_) => return Err(anyhow::anyhow!("Connection timed out after 5 seconds")),
+        };
         let (mut writer, reader) = ws_stream.split();
 
         // 发送连接消息
