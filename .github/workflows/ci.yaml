@@ -14,6 +14,9 @@ jobs:
       matrix:
         platform: [ubuntu-latest, windows-latest, macos-latest]
     runs-on: ${{ matrix.platform }}
+    env:
+      RUST_BACKTRACE: 1
+      RUST_TEST_THREADS: 1
     steps:
     - uses: actions/checkout@v4
     - name: Install rust toolchain
