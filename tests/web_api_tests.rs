@@ -13,6 +13,7 @@ use uniclipboard::{
     Config, WebSocketHandler, WebSocketMessageHandler, CONFIG,
 };
 
+#[cfg(test)]
 mod tests {
     use uniclipboard::context::AppContextBuilder;
     use uniclipboard::db::DB_POOL;
