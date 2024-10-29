@@ -1,18 +1,19 @@
 use super::traits::LocalClipboardTrait;
 use crate::clipboard::{RsClipboard, RsClipboardChangeHandler};
 use crate::message::Payload;
+use anyhow::anyhow;
 use anyhow::Result;
 use async_trait::async_trait;
 use clipboard_rs::WatcherShutdown;
 use clipboard_rs::{ClipboardWatcher, ClipboardWatcherContext};
-use log::{debug, info};
 use log::error;
+use log::{debug, info};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::thread;
 use tokio::sync::{mpsc, Notify};
 use tokio::sync::{Mutex as TokioMutex, RwLock};
 use tokio::time::{Duration, Instant};
-use std::sync::atomic::{AtomicBool, Ordering};
 
 #[derive(Clone)]
 pub struct LocalClipboard {
@@ -28,16 +29,17 @@ pub struct LocalClipboard {
 }
 
 impl LocalClipboard {
-    pub fn new() -> Self {
+    pub fn new() -> Result<Self> {
         let notify = Arc::new(Notify::new());
-        let rs_clipboard = RsClipboard::new(notify.clone()).unwrap();
+        let rs_clipboard = RsClipboard::new(notify.clone())?;
         let clipboard_change_handler = RsClipboardChangeHandler::new(notify);
         let mut watcher: ClipboardWatcherContext<RsClipboardChangeHandler> =
-            ClipboardWatcherContext::new().unwrap();
+            ClipboardWatcherContext::new()
+                .map_err(|e| anyhow!("Failed to create clipboard watcher context: {:?}", e))?;
         let watcher_shutdown = watcher
             .add_handler(clipboard_change_handler)
             .get_shutdown_channel();
-        Self {
+        Ok(Self {
             rs_clipboard: Arc::new(rs_clipboard),
             paused: Arc::new((TokioMutex::new(false), Notify::new())),
             stopped: Arc::new(TokioMutex::new(false)),
@@ -45,9 +47,9 @@ impl LocalClipboard {
             watcher_shutdown: Arc::new(TokioMutex::new(Some(watcher_shutdown))),
             rw_lock: Arc::new(RwLock::new(false)),
             last_write: Arc::new(TokioMutex::new(Instant::now())),
-            write_cooldown: Duration::from_millis(500),  // 在 500ms 内，忽略自己写入导致的剪贴板变更事件
+            write_cooldown: Duration::from_millis(500), // 在 500ms 内，忽略自己写入导致的剪贴板变更事件
             is_self_write: Arc::new(AtomicBool::new(false)),
-        }
+        })
     }
 }
 

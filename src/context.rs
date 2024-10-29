@@ -33,7 +33,7 @@ impl AppContextBuilder {
     }
 
     pub async fn build(self) -> Result<AppContext> {
-        let local_clipboard = Arc::new(LocalClipboard::new());
+        let local_clipboard = Arc::new(LocalClipboard::new()?);
         let remote_sync_manager = Arc::new(RemoteSyncManager::new());
         let connection_manager = Arc::new(ConnectionManager::new());
         let websocket_message_handler =

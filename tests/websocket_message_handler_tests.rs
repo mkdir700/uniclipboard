@@ -17,7 +17,7 @@ use uniclipboard::{
 
 mod tests {
     use tokio_tungstenite::tungstenite::Message;
-    use uniclipboard::context::AppContextBuilder;
+    use uniclipboard::connection::ConnectionManager;
     use uniclipboard::db::DB_POOL;
 
     use super::*;
@@ -61,12 +61,30 @@ mod tests {
 
     async fn setup_webserver() -> WebServerWrapper {
         let config = setup_config();
-        let app_context = AppContextBuilder::new(config).build().await.unwrap();
+        let connection_manager = Arc::new(ConnectionManager::new());
+        let websocket_message_handler =
+            Arc::new(WebSocketMessageHandler::new(connection_manager.clone()));
+        let websocket_handler = Arc::new(WebSocketHandler::new(
+            websocket_message_handler.clone(),
+            connection_manager.clone(),
+        ));
+        let websocket_sync = Arc::new(WebSocketSync::new(
+            websocket_message_handler.clone(),
+            connection_manager.clone(),
+        ));
+        let webserver = WebServer::new(
+            SocketAddr::new(
+                config.webserver_addr.unwrap().parse().unwrap(),
+                config.webserver_port.unwrap(),
+            ),
+            websocket_handler.clone(),
+        );
+
         WebServerWrapper {
-            websocket_message_handler: app_context.websocket_message_handler,
-            websocket_handler: app_context.websocket_handler,
-            webserver: Arc::new(app_context.webserver),
-            websocket_sync: app_context.websocket_sync,
+            websocket_message_handler: websocket_message_handler.clone(),
+            websocket_handler: websocket_handler.clone(),
+            webserver: Arc::new(webserver),
+            websocket_sync: websocket_sync.clone(),
         }
     }
 
