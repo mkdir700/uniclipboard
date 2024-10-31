@@ -61,3 +61,19 @@ impl DbManager {
 // 创建一个全局的数据库连接池
 pub static DB_POOL: Lazy<DbManager> =
     Lazy::new(|| DbManager::new().expect("Failed to create DB manager"));
+
+
+pub mod tests {
+    use super::*;
+
+    pub fn setup_test_db() -> r2d2::PooledConnection<ConnectionManager<SqliteConnection>> {
+        // 判断环境变量是否被设置
+        if env::var("DATABASE_URL").is_err() {
+            env::set_var("DATABASE_URL", "sqlite::memory:");
+        }
+
+        let db_manager = DbManager::new().unwrap();
+        db_manager.run_migrations().unwrap();
+        db_manager.get_connection().unwrap()
+    }
+}
