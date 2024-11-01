@@ -13,6 +13,12 @@ pub fn generate_device_id() -> String {
     format!("{:06}", random_number)
 }
 
+pub fn random_code() -> String {
+    // 生成6位随机数字
+    let random_number = rand::random::<u32>() % 1000000;
+    format!("{:06}", random_number)
+}
+
 /// 检查 IP 地址是否有效
 pub fn is_valid_ip(ip: &str) -> bool {
     let parts: Vec<&str> = ip.split('.').collect();

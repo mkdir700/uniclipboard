@@ -120,6 +120,13 @@ impl Payload {
         })
     }
 
+    pub fn get_size(&self) -> usize {
+        match self {
+            Payload::Text(p) => p.content.len(),
+            Payload::Image(p) => p.size,
+        }
+    }
+
     #[allow(dead_code)]
     pub fn get_content(&self) -> &Bytes {
         match self {

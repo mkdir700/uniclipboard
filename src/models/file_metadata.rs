@@ -1,6 +1,6 @@
-use std::path::Path;
-
+use crate::utils::random_code;
 use diesel::prelude::*;
+use std::path::PathBuf;
 
 #[derive(Debug)]
 pub struct FileMetadata {
@@ -8,20 +8,21 @@ pub struct FileMetadata {
     pub file_name: String,
     pub file_size: usize,
     pub file_type: String,
-    pub local_path: Path,
+    pub local_path: PathBuf,
 }
 
 impl FileMetadata {
-    pub fn new() {
-        // 随机生成 file code
-        let code;
-
+    pub fn new(name: &str, file_size: usize, file_type: &str, local_path: PathBuf) -> Self {
+        let code = random_code();
         Self {
-            code
+            code,
+            file_name: name.to_string(),
+            file_size: file_size,
+            file_type: file_type.to_string(),
+            local_path: local_path,
         }
     }
 }
-
 
 #[derive(Queryable, Selectable, Debug)]
 #[diesel(table_name = crate::schema::file_metadata)]
