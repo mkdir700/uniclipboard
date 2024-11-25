@@ -1,6 +1,6 @@
 [package]
 name = "uniclipboard"
-version = "0.1.1"
+version = "0.1.2-beta.3"
 edition = "2021"
 
 [profile.release]
@@ -69,9 +69,9 @@ tokio-stream = "0.1.16"
 local-ip-address = "0.6.3"
 
 diesel = { version = "2.2.0", features = [
-    "sqlite",
-    "returning_clauses_for_sqlite_3_35",
-    "r2d2",
+  "sqlite",
+  "returning_clauses_for_sqlite_3_35",
+  "r2d2",
 ] }
 # build libsqlite3 as part of the build process
 # uncomment this line if you run into setup issues
@@ -82,18 +82,18 @@ diesel_migrations = { version = "2.2.0", features = ["sqlite"] }
 [target.'cfg(windows)'.dependencies]
 clipboard-win = { version = "5.4.0" }
 winapi = { version = "0.3.9", features = [
-    "winuser",
-    "basetsd",
-    "minwindef",
-    "winbase",
+  "winuser",
+  "basetsd",
+  "minwindef",
+  "winbase",
 ] }
 
 [dependencies.uuid]
 version = "1.10.0"
 features = [
-    "v4",                # Lets you generate random UUIDs
-    "fast-rng",          # Use a faster (but still sufficiently random) RNG
-    "macro-diagnostics", # Enable better diagnostics for compile-time UUIDs
+  "v4",                # Lets you generate random UUIDs
+  "fast-rng",          # Use a faster (but still sufficiently random) RNG
+  "macro-diagnostics", # Enable better diagnostics for compile-time UUIDs
 ]
 
 [dev-dependencies]
