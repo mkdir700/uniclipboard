@@ -95,15 +95,15 @@ jobs:
         run: |
           sed -i '/^\[package\]/,/^$/s/^version = ".*"/version = "${{ env.RELEASE_VERSION }}"/' Cargo.toml
 
-      - name: Create Pull Request(if test-workflow is false)
-        uses: peter-evans/create-pull-request@v7
-        if: ${{ github.event.inputs.test-workflow == 'false' }}
-        with:
-          token: ${{ secrets.PAT_WITH_PUSH_ACCESS }}
-          title: "Bump version to ${{ env.RELEASE_VERSION }}"
-          body: "Bump version to ${{ env.RELEASE_VERSION }}"
-          branch: "bump-version-to-${{ env.RELEASE_VERSION }}"
-          commit-message: "Bump version to ${{ env.RELEASE_VERSION }}"
+      # - name: Create Pull Request(if test-workflow is false)
+      #   uses: peter-evans/create-pull-request@v7
+      #   if: ${{ github.event.inputs.test-workflow == 'false' }}
+      #   with:
+      #     token: ${{ secrets.PAT_WITH_PUSH_ACCESS }}
+      #     title: "Bump version to ${{ env.RELEASE_VERSION }}"
+      #     body: "Bump version to ${{ env.RELEASE_VERSION }}"
+      #     branch: "bump-version-to-${{ env.RELEASE_VERSION }}"
+      #     commit-message: "Bump version to ${{ env.RELEASE_VERSION }}"
 
       - name: Restore version file
         uses: actions/upload-artifact@v4
@@ -244,7 +244,7 @@ jobs:
           echo 'deb [trusted=yes] https://repo.goreleaser.com/apt/ /' | sudo tee /etc/apt/sources.list.d/goreleaser.list
           sudo apt update
           sudo apt install nfpm
-      
+
       - name: Install Snapcraft
         run: |
           sudo apt-get install -y snapcraft
@@ -399,3 +399,4 @@ jobs:
           name: uniclipboard-${{ env.RELEASE_VERSION }}-nupkg
           path: dist/*.nupkg
           retention-days: 1
+
