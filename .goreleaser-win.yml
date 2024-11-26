@@ -28,7 +28,7 @@ chocolateys:
     docs_url: https://github.com/mkdir700/uniclipboard/blob/main/README.md
     bug_tracker_url: https://github.com/mkdir700/uniclipboard/issues
     tags: "clipboard sharing tool"
-    summary: A cross-platform clipboard sharing tool  designed to create a seamless clipboard experience
+    summary: A cross-platform clipboard sharing tool designed to create a seamless clipboard experience
     description: |
       {{ .ProjectName }} installer package.
       UniClipboard is A cross-platform clipboard sharing tool  designed to create a seamless clipboard experience across multiple devices.

@@ -348,6 +348,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GH_TOKEN_RUST_CROSS }}
           CHOCOLATEY_API_KEY: ${{ secrets.CHOCOLATEY_API_KEY }}
+          ARTIFACT_NAME: uniclipboard_${{ env.RELEASE_VERSION }}_windows_amd64.exe
 
       - name: Debug Artifacts and Dist (After)
         run: |
