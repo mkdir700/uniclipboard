@@ -132,8 +132,10 @@ jobs:
           # Mac OS
           - name: MacOS x86_64
             target: x86_64-apple-darwin
+            os: macos-14-large
           - name: MacOS aarch64
             target: aarch64-apple-darwin
+            os: macos-14
 
           # Windows
           - name: Windows x86_64
@@ -157,9 +159,7 @@ jobs:
           cat artifacts/version/version.txt
           echo "RELEASE_VERSION=$(cat artifacts/version/version.txt)" >> $GITHUB_ENV
 
-      # Linux & Windows
       - name: Install rust toolchain
-        if: ${{ !contains(matrix.platform.target, 'apple') }}
         uses: actions-rs/toolchain@v1
         with:
           # We setup Rust toolchain and the desired target
@@ -169,40 +169,7 @@ jobs:
           target: ${{ matrix.platform.target }}
           components: rustfmt, clippy
 
-      # Linux & Windows 构建，缓存依赖
       - name: Cache dependencies for ${{ matrix.platform.name }}
-        if: ${{ !contains(matrix.platform.target, 'apple') }}
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cargo
-            target
-          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-cargo-
-
-      - name: Build ${{ matrix.platform.name }} binary
-        if: ${{ !contains(matrix.platform.target, 'apple') }}
-        uses: actions-rs/cargo@v1
-        env:
-          CARGO_BUILD_JOBS: 4
-        # We use cross-rs if not running on x86_64 architecture on Linux
-        with:
-          command: build
-          use-cross: ${{ !contains(matrix.platform.target, 'x86_64') }}
-          args: ${{ env.BUILD_ARGS }} --target ${{ matrix.platform.target }}
-
-      # Mac OS
-      - name: Login to DockerHub
-        if: contains(matrix.platform.target, 'apple')
-        # We log on DockerHub
-        uses: docker/login-action@v3
-        with:
-          username: ${{ env.DOCKER_LOGIN }}
-          password: ${{ env.DOCKER_TOKEN }}
-
-      - name: Cache Cargo and build directories
-        if: contains(matrix.platform.target, 'apple')
         uses: actions/cache@v3
         with:
           path: |
@@ -212,15 +179,12 @@ jobs:
             ${{ runner.os }}-${{ matrix.platform.target }}-cargo-
 
       - name: Build ${{ matrix.platform.name }} binary
-        if: contains(matrix.platform.target, 'apple')
-        # We use a dedicated Rust image containing required Apple libraries to cross-compile on multiple archs
-        run: |
-          docker run --rm \
-            --volume "${PWD}":/root/src \
-            --volume "${PWD}/target":/root/src/target \
-            --workdir /root/src \
-            joseluisq/rust-linux-darwin-builder:${{ env.RUST_VERSION }} \
-            sh -c "CC=o64-clang CXX=o64-clang++ RUSTFLAGS='-C linker=o64-clang' cargo build ${{ env.BUILD_ARGS }} --target ${{ matrix.platform.target }}"
+        uses: actions-rs/cargo@v1
+        env:
+          CARGO_BUILD_JOBS: 4
+        with:
+          command: build
+          args: ${{ env.BUILD_ARGS }} --target ${{ matrix.platform.target }}
 
       - name: Store artifact
         uses: actions/upload-artifact@v4
