@@ -132,8 +132,10 @@ jobs:
           # Mac OS
           - name: MacOS x86_64
             target: x86_64-apple-darwin
+            os: macos-14-large
           - name: MacOS aarch64
             target: aarch64-apple-darwin
+            os: macos-14
 
           # Windows
           - name: Windows x86_64
@@ -201,6 +203,7 @@ jobs:
           username: ${{ env.DOCKER_LOGIN }}
           password: ${{ env.DOCKER_TOKEN }}
 
+      # 缓存构建，用于 Macos
       - name: Cache Cargo and build directories
         if: contains(matrix.platform.target, 'apple')
         uses: actions/cache@v3
@@ -211,6 +214,7 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-${{ matrix.platform.target }}-cargo-
 
+      # 构建 Macos 二进制文件
       - name: Build ${{ matrix.platform.name }} binary
         if: contains(matrix.platform.target, 'apple')
         # We use a dedicated Rust image containing required Apple libraries to cross-compile on multiple archs
