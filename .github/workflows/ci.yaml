@@ -19,16 +19,28 @@ jobs:
       RUST_TEST_THREADS: 1
     steps:
     - uses: actions/checkout@v4
+
     - name: Install rust toolchain
       uses: actions-rs/toolchain@v1
       with:
         profile: minimal
         toolchain: stable
+
+    - name: Cache dependencies for ${{ matrix.platform.name }}
+      uses: actions/cache@v3
+      with:
+        path: |
+          target
+        key: ${{ runner.os }}-${{ matrix.platform.target }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+        restore-keys: |
+          ${{ runner.os }}-${{ matrix.platform.target }}-cargo-
+
     - name: Install dependencies (Ubuntu)
       if: matrix.platform == 'ubuntu-latest'
       run: |
         sudo apt-get update
         sudo apt-get install -y pkg-config libssl-dev libxdo-dev
+
     - name: Run tests
       run: make ci
 
