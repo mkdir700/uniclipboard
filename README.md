@@ -1,5 +1,12 @@
 ![uniclipboard](https://socialify.git.ci/mkdir700/uniclipboard/image?description=1&descriptionEditable=%E4%B8%80%E4%B8%AA%E8%B7%A8%E5%B9%B3%E5%8F%B0%E5%89%AA%E5%88%87%E6%9D%BF%E5%85%B1%E4%BA%AB%E5%B7%A5%E5%85%B7%EF%BC%8C%E6%97%A8%E5%9C%A8%E6%89%93%E9%80%A0%E6%97%A0%E7%BC%9D%E7%9A%84%E5%89%AA%E5%88%87%E6%9D%BF%E4%BD%93%E9%AA%8C&font=Raleway&language=1&name=1&owner=1&pattern=Circuit%20Board&theme=Auto)
 
+> [!WARNING]
+> **此仓库已归档！**
+> 
+> 本仓库已经不再维护，目前正在开发新版本的UniClipboard，它提供了图形用户界面和更多功能。
+> 
+> **请访问新仓库：[https://github.com/mkdir700/uniclipboard-desktop](https://github.com/mkdir700/uniclipboard-desktop)**
+
 <div align="center">
   <br/>
     
@@ -118,7 +125,7 @@
 ## TODO
 
 - [ ] 支持文件/文件夹同步 
-- [ ] UI 界面
+- [x] UI 界面 (已在新版本 [uniclipboard-desktop](https://github.com/mkdir700/uniclipboard-desktop) 实现)
 - [ ] 支持自动发现设备，无需手动配置 IP 地址
 - [ ] 支持网页端同步，以覆盖移动端设备
 
