@@ -1,11 +1,20 @@
 ![uniclipboard](https://socialify.git.ci/mkdir700/uniclipboard/image?description=1&descriptionEditable=%E4%B8%80%E4%B8%AA%E8%B7%A8%E5%B9%B3%E5%8F%B0%E5%89%AA%E5%88%87%E6%9D%BF%E5%85%B1%E4%BA%AB%E5%B7%A5%E5%85%B7%EF%BC%8C%E6%97%A8%E5%9C%A8%E6%89%93%E9%80%A0%E6%97%A0%E7%BC%9D%E7%9A%84%E5%89%AA%E5%88%87%E6%9D%BF%E4%BD%93%E9%AA%8C&font=Raleway&language=1&name=1&owner=1&pattern=Circuit%20Board&theme=Auto)
 
-> [!WARNING]
-> **此仓库已归档！**
-> 
-> 本仓库已经不再维护，目前正在开发新版本的UniClipboard，它提供了图形用户界面和更多功能。
-> 
-> **请访问新仓库：[https://github.com/mkdir700/uniclipboard-desktop](https://github.com/mkdir700/uniclipboard-desktop)**
+> [!IMPORTANT]
+> **This repository is archived and no longer maintained.**
+> **本仓库已归档，不再维护。**
+>
+> Development has continued at **[UniClipboard/UniClipboard](https://github.com/UniClipboard/UniClipboard)** — a complete rewrite featuring:
+> 后续开发已迁移至 **[UniClipboard/UniClipboard](https://github.com/UniClipboard/UniClipboard)**，该版本是完全重写的新版本，提供以下能力：
+>
+> - 🖥️  **Native desktop GUI** (Tauri) — 原生桌面 GUI（Tauri 实现）
+> - 🔒 **End-to-end encryption** with XChaCha20-Poly1305 — 端到端加密
+> - 🌐 **P2P direct connection** via libp2p, no servers, no accounts — P2P 直连，无服务器、无账号
+> - 🔍 **mDNS auto-discovery** — 局域网设备自动发现
+> - 🖼️  Text + image sync, more formats coming — 支持文本与图片同步
+>
+> 👉 **Please visit and star the new repo: <https://github.com/UniClipboard/UniClipboard>**
+> 👉 **请前往新仓库并 Star：<https://github.com/UniClipboard/UniClipboard>**
 
 <div align="center">
   <br/>
@@ -51,6 +60,11 @@
   </div>
 
 </div>
+
+---
+
+> 以下内容为旧版（CLI 版本）历史文档，仅供归档参考。新版本请前往 [UniClipboard/UniClipboard](https://github.com/UniClipboard/UniClipboard)。
+> The content below is legacy documentation for the old CLI version. For the current version, please visit [UniClipboard/UniClipboard](https://github.com/UniClipboard/UniClipboard).
 
 ## 功能
 
@@ -125,7 +139,7 @@
 ## TODO
 
 - [ ] 支持文件/文件夹同步 
-- [x] UI 界面 (已在新版本 [uniclipboard-desktop](https://github.com/mkdir700/uniclipboard-desktop) 实现)
+- [x] UI 界面 (已在新版本 [UniClipboard/UniClipboard](https://github.com/UniClipboard/UniClipboard) 实现)
 - [ ] 支持自动发现设备，无需手动配置 IP 地址
 - [ ] 支持网页端同步，以覆盖移动端设备
 
